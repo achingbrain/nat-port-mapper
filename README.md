@@ -16,7 +16,13 @@ npm install nat-api
 ```js
 import { upnpNat } from '@achingbrain/nat-port-mapper'
 
-const client = await upnpNat()
+const client = await upnpNat({
+  // all fields are optional
+  ttl: number // how long mappings should live for in seconds - min 20 minutes, default 2 hours
+  description: string // default description to pass to the router for a mapped port
+  gateway: string // override the router address, will be auto-detected if not set
+  keepAlive: boolean // if true, refresh the mapping ten minutes before the ttl is reached, default true
+})
 
 // Map public port 1000 to private port 1000 with TCP
 await client.map({
@@ -32,7 +38,7 @@ await client.map({
 })
 
 // Unmap port public and private port 1000 with TCP
-await client.un({
+await client.unmap({
   localPort: 1000,
   protocol: 'TCP'
 })

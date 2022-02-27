@@ -14,8 +14,7 @@ export interface NatAPIOptions {
   ttl?: number
   description?: string
   gateway?: string
-  autoUpdate?: boolean
-  enablePMP?: boolean
+  keepAlive?: boolean
 }
 
 export interface MapPortOptions {
@@ -45,8 +44,8 @@ export class NatAPI {
   private readonly ttl: number
   private readonly description: string
   private readonly gateway?: string
-  private readonly autoUpdate: boolean
-  private readonly autoUpdateInterval: number
+  private readonly keepAlive: boolean
+  private readonly keepAliveInterval: number
   private readonly destroyed: boolean
   private openPorts: MapPortOptions[]
   private readonly client: Client
@@ -57,12 +56,12 @@ export class NatAPI {
     this.ttl = opts.ttl != null ? Math.max(opts.ttl, 1200) : 7200
     this.description = opts.description ?? 'NatAPI'
     this.gateway = opts.gateway
-    this.autoUpdate = opts.autoUpdate ?? true
+    this.keepAlive = opts.keepAlive ?? true
     this.client = client
     this.updateIntervals = new Map()
 
     // Refresh the mapping 10 minutes before the end of its lifetime
-    this.autoUpdateInterval = (this.ttl - 600) * 1000
+    this.keepAliveInterval = (this.ttl - 600) * 1000
     this.destroyed = false
     this.openPorts = []
   }
@@ -80,13 +79,13 @@ export class NatAPI {
 
     this.openPorts.push(opts)
 
-    if (this.autoUpdate) {
+    if (this.keepAlive) {
       this.updateIntervals.set(`${opts.publicPort}:${opts.localPort}-${opts.protocol}`, setInterval(() => {
         void this.client.map(opts)
           .catch(err => {
             log('Error refreshing port mapping %d:%d for protocol %s mapped on router', opts.publicPort, opts.localPort, opts.protocol, err)
           })
-      }, this.autoUpdateInterval))
+      }, this.keepAliveInterval))
     }
 
     log('Port %d:%d for protocol %s mapped on router', opts.publicPort, opts.localPort, opts.protocol)
