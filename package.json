@@ -133,9 +133,6 @@
     "lint": "aegir lint",
     "dep-check": "aegir dep-check",
     "build": "aegir build --no-bundle",
-    "test": "aegir test",
-    "test:node": "aegir test -t node --cov",
-    "test:electron-main": "aegir test -t electron-main",
     "release": "aegir release"
   },
   "dependencies": {
