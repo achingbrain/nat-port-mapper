@@ -40,7 +40,6 @@ export function discoverGateway (options: DiscoveryOptions = {}): () => Discover
   let expires: number
 
   return () => {
-
     let discovery: SSDP
     let clear: (() => void) | undefined
 
