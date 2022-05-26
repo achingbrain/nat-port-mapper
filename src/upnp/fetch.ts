@@ -7,7 +7,7 @@ const log = logger('nat-port-mapper:upnp:fetch')
 export interface RequestInit {
   method: 'POST' | 'GET'
   headers: Record<string, string>
-  body: Buffer | string,
+  body: Buffer | string
   signal: AbortSignal
 }
 
