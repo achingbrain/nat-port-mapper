@@ -1,7 +1,7 @@
 import { createSocket } from 'dgram'
 import { logger } from '@libp2p/logger'
 import { EventEmitter } from 'events'
-import errCode from 'err-code'
+import { CodeError } from '@libp2p/interfaces/errors'
 import defer, { DeferredPromise } from 'p-defer'
 import type { Socket, RemoteInfo } from 'dgram'
 import type { Client, MapPortOptions, UnmapPortOptions } from '../index.js'
@@ -341,7 +341,7 @@ export class PMPClient extends EventEmitter implements Client {
 
     // Error
     if (parsed.resultCode !== 0) {
-      return cb(errCode(new Error(parsed.resultMessage), parsed.resultCode))
+      return cb(new CodeError(parsed.resultMessage, parsed.resultCode))
     }
 
     // Success
