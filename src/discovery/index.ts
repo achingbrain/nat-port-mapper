@@ -86,10 +86,9 @@ export function discoverGateway (options: DiscoveryOptions = {}): () => Discover
           }
 
           log('Discovering gateway')
-          const clearable = pTimeout(
-            first(discovery.discover<InternetGatewayDevice>(ST)),
-            discoveryTimeout
-          )
+          const clearable = pTimeout(first(discovery.discover<InternetGatewayDevice>(ST)), {
+            milliseconds: discoveryTimeout
+          })
 
           clear = clearable.clear
 
