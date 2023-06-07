@@ -1,3 +1,21 @@
+## [1.0.9](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.8...v1.0.9) (2023-06-07)
+
+
+### Bug Fixes
+
+* expose mapped ports on client object ([#40](https://github.com/achingbrain/nat-port-mapper/issues/40)) ([7016f94](https://github.com/achingbrain/nat-port-mapper/commit/7016f945e9e6b4d0b0d808132acf2547b0adad3e))
+
+
+### Dependencies
+
+* bump xml2js from 0.5.0 to 0.6.0 ([#39](https://github.com/achingbrain/nat-port-mapper/issues/39)) ([902f37b](https://github.com/achingbrain/nat-port-mapper/commit/902f37b34e822fb39b4a9630c77190d499879ef2))
+
+
+### Trivial Changes
+
+* **deps-dev:** bump aegir from 37.12.1 to 39.0.1 ([#38](https://github.com/achingbrain/nat-port-mapper/issues/38)) ([f74f8f0](https://github.com/achingbrain/nat-port-mapper/commit/f74f8f04e03d79e8c6108eb1c64aa3c8de668647))
+* **deps:** bump p-timeout from 5.1.0 to 6.1.1 ([#41](https://github.com/achingbrain/nat-port-mapper/issues/41)) ([a2e7aa0](https://github.com/achingbrain/nat-port-mapper/commit/a2e7aa047558aaeefde71c69fbe0348e9d778e11))
+
 ## [1.0.8](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.7...v1.0.8) (2023-04-27)
 
 
