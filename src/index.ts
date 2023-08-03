@@ -1,6 +1,6 @@
 import os from 'os'
 import { logger } from '@libp2p/logger'
-import defaultGateway from 'default-gateway'
+import { gateway4async } from 'default-gateway'
 import { discoverGateway } from './discovery/index.js'
 import { PMPClient } from './pmp/index.js'
 import { UPNPClient } from './upnp/index.js'
@@ -192,7 +192,7 @@ export function upnpNat (options: Partial<NatAPIOptions> = {}): NatAPI {
 export async function pmpNat (options: Partial<NatAPIOptions> = {}): Promise<NatAPI> {
   const client = PMPClient.createClient(discoverGateway({
     ...options,
-    gateway: (await defaultGateway.v4()).gateway
+    gateway: (await gateway4async()).gateway
   }))
 
   return new NatAPI(options, client)
