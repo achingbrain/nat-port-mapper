@@ -1,3 +1,11 @@
+## [1.0.10](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.9...v1.0.10) (2023-08-03)
+
+
+### Dependencies
+
+* bump @libp2p/logger from 2.1.1 to 3.0.0 ([#47](https://github.com/achingbrain/nat-port-mapper/issues/47)) ([6b57fe9](https://github.com/achingbrain/nat-port-mapper/commit/6b57fe977d9886e8619081a3d4a7fec28b5aaaaa))
+* **dev:** bump aegir from 39.0.13 to 40.0.8 ([#48](https://github.com/achingbrain/nat-port-mapper/issues/48)) ([fa0e9b2](https://github.com/achingbrain/nat-port-mapper/commit/fa0e9b21d8ecd3bf1888453252d7b290f26d624b))
+
 ## [1.0.9](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.8...v1.0.9) (2023-06-07)
 
 
