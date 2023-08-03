@@ -145,7 +145,7 @@
   "dependencies": {
     "@achingbrain/ssdp": "^4.0.1",
     "@libp2p/logger": "^3.0.0",
-    "default-gateway": "^6.0.2",
+    "default-gateway": "^7.2.2",
     "err-code": "^3.0.1",
     "it-first": "^3.0.1",
     "p-defer": "^4.0.0",
@@ -153,7 +153,7 @@
     "xml2js": "^0.6.0"
   },
   "devDependencies": {
-    "@types/default-gateway": "^3.0.1",
+    "@types/default-gateway": "^7.2.0",
     "@types/xml2js": "^0.4.11",
     "aegir": "^40.0.8"
   }
