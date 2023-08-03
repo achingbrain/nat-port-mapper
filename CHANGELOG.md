@@ -1,3 +1,10 @@
+## [1.0.11](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.10...v1.0.11) (2023-08-03)
+
+
+### Dependencies
+
+* bump default-gateway from 6.0.3 to 7.2.2 ([#42](https://github.com/achingbrain/nat-port-mapper/issues/42)) ([19f33ea](https://github.com/achingbrain/nat-port-mapper/commit/19f33eafa2b91fc68100a703555c72f9a3ab4dee))
+
 ## [1.0.10](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.9...v1.0.10) (2023-08-03)
 
 
