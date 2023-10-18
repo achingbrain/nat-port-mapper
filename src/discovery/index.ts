@@ -8,8 +8,8 @@ import type { Service, SSDP } from '@achingbrain/ssdp'
 const log = logger('nat-port-mapper:discovery')
 
 export interface DiscoverGateway {
-  gateway: () => Promise<Service<InternetGatewayDevice>>
-  cancel: () => Promise<void>
+  gateway(): Promise<Service<InternetGatewayDevice>>
+  cancel(): Promise<void>
 }
 
 export interface DiscoveryOptions {

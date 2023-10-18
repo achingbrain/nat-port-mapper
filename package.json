@@ -23,10 +23,6 @@
     "port",
     "upnp"
   ],
-  "engines": {
-    "node": ">=16.0.0",
-    "npm": ">=7.0.0"
-  },
   "type": "module",
   "types": "./dist/src/index.d.ts",
   "files": [
@@ -45,6 +41,7 @@
   "eslintConfig": {
     "extends": "ipfs",
     "parserOptions": {
+      "project": true,
       "sourceType": "module"
     }
   },
@@ -155,6 +152,6 @@
   "devDependencies": {
     "@types/default-gateway": "^7.2.0",
     "@types/xml2js": "^0.4.11",
-    "aegir": "^40.0.8"
+    "aegir": "^41.0.5"
   }
 }
