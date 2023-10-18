@@ -34,10 +34,10 @@ export interface UnmapPortOptions {
 }
 
 export interface Client {
-  close: () => Promise<void>
-  map: (options: MapPortOptions) => Promise<void>
-  unmap: (options: UnmapPortOptions) => Promise<void>
-  externalIp: () => Promise<string>
+  close(): Promise<void>
+  map(options: MapPortOptions): Promise<void>
+  unmap(options: UnmapPortOptions): Promise<void>
+  externalIp(): Promise<string>
 }
 
 export class NatAPI {
