@@ -1,3 +1,10 @@
+## [1.0.13](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.12...v1.0.13) (2023-12-01)
+
+
+### Dependencies
+
+* bump @libp2p/logger from 3.1.0 to 4.0.1 ([#54](https://github.com/achingbrain/nat-port-mapper/issues/54)) ([5f9092b](https://github.com/achingbrain/nat-port-mapper/commit/5f9092bbd9d65251da5bfcfbeee18518522e9b23))
+
 ## [1.0.12](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.11...v1.0.12) (2023-10-18)
 
 
