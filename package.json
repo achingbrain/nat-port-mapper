@@ -152,6 +152,6 @@
   "devDependencies": {
     "@types/default-gateway": "^7.2.0",
     "@types/xml2js": "^0.4.11",
-    "aegir": "^41.0.5"
+    "aegir": "^42.2.0"
   }
 }
