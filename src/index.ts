@@ -9,7 +9,9 @@ const log = logger('nat-port-mapper')
 
 export interface NatAPIOptions {
   /**
-   * Minimum 20 minutes, default 2 hours
+   * TTL in seconds, minimum one minute
+   *
+   * @default 7200
    */
   ttl?: number
   description?: string
@@ -52,8 +54,8 @@ export class NatAPI {
   private readonly updateIntervals: Map<string, any>
 
   constructor (opts: NatAPIOptions = {}, client: Client) {
-    // TTL is 2 hours (min 20 min)
-    this.ttl = opts.ttl != null ? Math.max(opts.ttl, 1200) : 7200
+    // TTL is 2 hours (min 60 secs, default 2 hours)
+    this.ttl = opts.ttl != null ? Math.max(opts.ttl, 60) : 7200
     this.description = opts.description ?? 'NatAPI'
     this.gateway = opts.gateway
     this.keepAlive = opts.keepAlive ?? true
