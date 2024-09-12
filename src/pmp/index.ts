@@ -32,10 +32,10 @@ const RESULT_CODES: Record<number, string> = {
 export interface PortMappingOptions {
   type?: 'tcp' | 'udp'
   ttl?: number
-  public?: boolean
-  private?: boolean
-  internal?: boolean
-  external?: boolean
+  public?: number
+  private?: number
+  internal?: number
+  external?: number
 }
 
 export class PMPClient extends EventEmitter implements Client {
