@@ -1,20 +1,11 @@
-# @achingbrain/nat-port-mapper <!-- omit in toc -->
+# @achingbrain/nat-port-mapper
 
 [![codecov](https://img.shields.io/codecov/c/github/achingbrain/nat-port-mapper.svg?style=flat-square)](https://codecov.io/gh/achingbrain/nat-port-mapper)
 [![CI](https://img.shields.io/github/actions/workflow/status/achingbrain/nat-port-mapper/js-test-and-release.yml?branch=master\&style=flat-square)](https://github.com/achingbrain/nat-port-mapper/actions/workflows/js-test-and-release.yml?query=branch%3Amaster)
 
 > Port mapping with UPnP and NAT-PMP
 
-## Table of contents <!-- omit in toc -->
-
-- [Install](#install)
-- [Usage](#usage)
-- [Credits](#credits)
-- [Additional Information](#additional-information)
-- [License](#license)
-- [Contribution](#contribution)
-
-## Install
+# Install
 
 ```console
 $ npm i @achingbrain/nat-port-mapper
@@ -71,13 +62,13 @@ Based on [alxhotel/nat-api](https://github.com/alxhotel/nat-api)
 - <http://wikipedia.org/wiki/NAT_Port_Mapping_Protocol>
 - <http://tools.ietf.org/html/draft-cheshire-nat-pmp-03>
 
-## License
+# License
 
 Licensed under either of
 
-- Apache 2.0, ([LICENSE-APACHE](LICENSE-APACHE) / <http://www.apache.org/licenses/LICENSE-2.0>)
-- MIT ([LICENSE-MIT](LICENSE-MIT) / <http://opensource.org/licenses/MIT>)
+- Apache 2.0, ([LICENSE-APACHE](https://github.com/achingbrain/nat-port-mapper/LICENSE-APACHE) / <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT ([LICENSE-MIT](https://github.com/achingbrain/nat-port-mapper/LICENSE-MIT) / <http://opensource.org/licenses/MIT>)
 
-## Contribution
+# Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

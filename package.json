@@ -11,6 +11,10 @@
   "bugs": {
     "url": "https://github.com/achingbrain/nat-port-mapper/issues"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "keywords": [
     "api",
     "forwarding",
@@ -141,7 +145,7 @@
   },
   "dependencies": {
     "@achingbrain/ssdp": "^4.0.1",
-    "@libp2p/logger": "^4.0.1",
+    "@libp2p/logger": "^5.0.1",
     "default-gateway": "^7.2.2",
     "err-code": "^3.0.1",
     "it-first": "^3.0.1",
@@ -152,6 +156,6 @@
   "devDependencies": {
     "@types/default-gateway": "^7.2.0",
     "@types/xml2js": "^0.4.11",
-    "aegir": "^42.2.5"
+    "aegir": "^44.1.1"
   }
 }
