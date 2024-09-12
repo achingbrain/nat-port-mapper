@@ -57,7 +57,7 @@ export class Device {
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
   <s:Body>
     <u:${action} xmlns:u="${info.service}">${args.map((args) => `
-      <${args[0]}>${args[1] != null ? args[1] : ''}</${args[0]}>`).join('')}
+      <${args[0]}>${args[1] ?? ''}</${args[0]}>`).join('')}
     </u:${action}>
   </s:Body>
 </s:Envelope>`
@@ -100,7 +100,7 @@ export class Device {
       })
 
     // Use the first available service
-    if (service == null || service.controlURL == null || service.SCPDURL == null) {
+    if (service?.controlURL == null || service.SCPDURL == null) {
       throw new Error('Service not found')
     }
 
