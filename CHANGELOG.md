@@ -1,3 +1,11 @@
+## [1.0.15](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.14...v1.0.15) (2024-09-12)
+
+### Bug Fixes
+
+* accept ports as numbers ([#68](https://github.com/achingbrain/nat-port-mapper/issues/68)) ([add9557](https://github.com/achingbrain/nat-port-mapper/commit/add9557e2a500a019ae3fad945c6a0e23e490e9e)), closes [#67](https://github.com/achingbrain/nat-port-mapper/issues/67)
+* lower minimum ttl to one minute ([#70](https://github.com/achingbrain/nat-port-mapper/issues/70)) ([07e2c41](https://github.com/achingbrain/nat-port-mapper/commit/07e2c41bd6b6986dd35cc215363e88526bf1a788)), closes [#66](https://github.com/achingbrain/nat-port-mapper/issues/66)
+* update deps ([#69](https://github.com/achingbrain/nat-port-mapper/issues/69)) ([aa85f31](https://github.com/achingbrain/nat-port-mapper/commit/aa85f3177e27b39258f0323db0059e63f19459de))
+
 ## [1.0.14](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.13...v1.0.14) (2024-09-12)
 
 
