@@ -1,3 +1,10 @@
+## [1.0.14](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.13...v1.0.14) (2024-09-12)
+
+
+### Dependencies
+
+* **dev:** bump aegir from 41.3.5 to 42.2.5 ([#64](https://github.com/achingbrain/nat-port-mapper/issues/64)) ([45d46f9](https://github.com/achingbrain/nat-port-mapper/commit/45d46f9c3970b764667be7854b7f3fcddc555b6d))
+
 ## [1.0.13](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.12...v1.0.13) (2023-12-01)
 
 
