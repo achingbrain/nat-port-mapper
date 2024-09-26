@@ -44,6 +44,7 @@ export class UPNPClient implements Client {
     log('Mapping local port %d to public port %d', options.localPort, options.publicPort)
 
     await gateway.run('AddPortMapping', [
+      ['NewRemoteHost', ''],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', protocol],
       ['NewInternalPort', options.localPort],
@@ -63,6 +64,7 @@ export class UPNPClient implements Client {
     const gateway = await this.findGateway()
 
     await gateway.run('DeletePortMapping', [
+      ['NewRemoteHost', ''],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', options.protocol]
     ], this.abortController.signal)
