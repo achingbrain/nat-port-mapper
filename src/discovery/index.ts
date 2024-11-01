@@ -1,5 +1,5 @@
-import ssdp from '@achingbrain/ssdp'
 import { setMaxListeners } from 'node:events'
+import ssdp from '@achingbrain/ssdp'
 import { logger } from '@libp2p/logger'
 import { anySignal } from 'any-signal'
 import first from 'it-first'
