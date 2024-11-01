@@ -10,7 +10,7 @@ import type { Client } from '../types.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
-const debug = logger('nat-port-mapper:pmp')
+const log = logger('nat-port-mapper:pmp')
 
 // Ports defined by draft
 const CLIENT_PORT = 5350
@@ -82,14 +82,14 @@ export class PMPClient extends EventEmitter implements Client {
   }
 
   connect (): void {
-    debug('Client#connect()')
+    log('Client#connect()')
     if (this.connecting) return
     this.connecting = true
     this.socket.bind(CLIENT_PORT)
   }
 
   async map (opts: MapPortOptions): Promise<void> {
-    debug('Client#portMapping()')
+    log('Client#portMapping()')
     let opcode: number
     switch (String(opts.protocol ?? 'tcp').toLowerCase()) {
       case 'tcp':
@@ -118,7 +118,7 @@ export class PMPClient extends EventEmitter implements Client {
   }
 
   async unmap (opts: UnmapPortOptions): Promise<void> {
-    debug('Client#portUnmapping()')
+    log('Client#portUnmapping()')
 
     await this.map({
       ...opts,
@@ -129,7 +129,7 @@ export class PMPClient extends EventEmitter implements Client {
   }
 
   async externalIp (options?: AbortOptions): Promise<string> {
-    debug('Client#externalIp()')
+    log('Client#externalIp()')
 
     const discoverGateway = this.discoverGateway()
     this.cancelGatewayDiscovery = discoverGateway.cancel
@@ -147,7 +147,7 @@ export class PMPClient extends EventEmitter implements Client {
   }
 
   async close (options?: AbortOptions): Promise<void> {
-    debug('Client#close()')
+    log('Client#close()')
 
     if (this.socket != null) {
       this.socket.close()
@@ -169,7 +169,7 @@ export class PMPClient extends EventEmitter implements Client {
    */
 
   request (op: number, obj: PortMappingOptions, deferred: DeferredPromise<any>): void {
-    debug('Client#request()', [op, obj])
+    log('Client#request()', [op, obj])
 
     let buf
     let size
@@ -243,22 +243,22 @@ export class PMPClient extends EventEmitter implements Client {
    * Processes the next request if the socket is listening.
    */
   _next (): void {
-    debug('Client#_next()')
+    log('Client#_next()')
 
     const req = this.queue[0]
 
     if (req == null) {
-      debug('_next: nothing to process')
+      log('_next: nothing to process')
       return
     }
 
     if (this.socket == null) {
-      debug('_next: client is closed')
+      log('_next: client is closed')
       return
     }
 
     if (!this.listening) {
-      debug('_next: not "listening" yet, cannot send out request yet')
+      log('_next: not "listening" yet, cannot send out request yet')
 
       if (!this.connecting) {
         this.connect()
@@ -268,7 +268,7 @@ export class PMPClient extends EventEmitter implements Client {
     }
 
     if (this.reqActive) {
-      debug('_next: already an active request so wait...')
+      log('_next: already an active request so wait...')
       return
     }
 
@@ -277,12 +277,12 @@ export class PMPClient extends EventEmitter implements Client {
 
     const buf = req.buf
 
-    debug('_next: sending request', buf, this.gateway)
+    log('_next: sending request', buf, this.gateway)
     this.socket.send(buf, 0, buf.length, SERVER_PORT, this.gateway)
   }
 
   onListening (): void {
-    debug('Client#onListening()')
+    log('Client#onListening()')
     this.listening = true
     this.connecting = false
 
@@ -296,7 +296,7 @@ export class PMPClient extends EventEmitter implements Client {
       return
     }
 
-    debug('Client#onMessage()', [msg, rinfo])
+    log('Client#onMessage()', [msg, rinfo])
 
     const cb = (err?: Error, parsed?: any): void => {
       this.req = null
@@ -322,13 +322,13 @@ export class PMPClient extends EventEmitter implements Client {
     parsed.op = msg.readUInt8(1)
 
     if (parsed.op - SERVER_DELTA !== req.op) {
-      debug('WARN: ignoring unexpected message opcode', parsed.op)
+      log('WARN: ignoring unexpected message opcode', parsed.op)
       return
     }
 
     // if we got here, then we're gonna invoke the request's callback,
     // so shift this request off of the queue.
-    debug('removing "req" off of the queue')
+    log('removing "req" off of the queue')
     this.queue.shift()
 
     if (parsed.vers !== 0) {
@@ -370,13 +370,13 @@ export class PMPClient extends EventEmitter implements Client {
   }
 
   onClose (): void {
-    debug('Client#onClose()')
+    log('Client#onClose()')
     this.listening = false
     this.connecting = false
   }
 
   onError (err: Error): void {
-    debug('Client#onError()', [err])
+    log('Client#onError()', [err])
     if (this.req?.cb != null) {
       this.req.cb(err)
     } else {

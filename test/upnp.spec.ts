@@ -2,7 +2,7 @@ import { expect } from 'aegir/chai'
 import { upnpNat } from '../src/index.js'
 import type { MapPortOptions, NatAPI } from '../src/index.js'
 
-describe('nat-port-mapper', () => {
+describe('upnp-nat-port-mapper', () => {
   let client: NatAPI
 
   before(() => {
