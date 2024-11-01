@@ -141,17 +141,20 @@
     "build": "aegir build --no-bundle",
     "docs": "aegir docs",
     "release": "aegir release",
-    "test": "aegir test",
+    "test": "aegir test -t node",
     "test:node": "aegir test -t node"
   },
   "dependencies": {
-    "@achingbrain/ssdp": "^4.0.1",
+    "@achingbrain/ssdp": "^4.1.0",
+    "@libp2p/interface": "^2.2.0",
     "@libp2p/logger": "^5.0.1",
+    "abort-options": "^1.0.1",
+    "any-signal": "^4.1.1",
     "default-gateway": "^7.2.2",
     "err-code": "^3.0.1",
     "it-first": "^3.0.1",
     "p-defer": "^4.0.0",
-    "p-timeout": "^6.1.1",
+    "race-signal": "^1.1.0",
     "xml2js": "^0.6.0"
   },
   "devDependencies": {
