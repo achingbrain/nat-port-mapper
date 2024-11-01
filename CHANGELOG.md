@@ -1,3 +1,9 @@
+## [1.0.17](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.16...v1.0.17) (2024-11-01)
+
+### Bug Fixes
+
+* update project ([e499506](https://github.com/achingbrain/nat-port-mapper/commit/e499506f6fa75f1d67699d6d4a4e07f468d7de9f))
+
 ## [1.0.16](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.15...v1.0.16) (2024-11-01)
 
 ### Dependencies
