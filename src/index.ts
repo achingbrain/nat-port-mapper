@@ -124,12 +124,12 @@ export interface MapPortOptions extends AbortOptions {
   /**
    * Some metadata about the mapping
    */
-  description: string
+  description?: string
 
   /**
    * How long to map the port for
    */
-  ttl: number
+  ttl?: number
 
   /**
    * A gateway to map the port on, if omitted
