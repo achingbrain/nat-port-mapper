@@ -1,3 +1,9 @@
+## [1.0.18](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.17...v1.0.18) (2024-11-01)
+
+### Bug Fixes
+
+* add required NewRemoteHost field ([#71](https://github.com/achingbrain/nat-port-mapper/issues/71)) ([9fbc684](https://github.com/achingbrain/nat-port-mapper/commit/9fbc684ef3ab938a31603234a01f05ff4af4ae99))
+
 ## [1.0.17](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.16...v1.0.17) (2024-11-01)
 
 ### Bug Fixes
