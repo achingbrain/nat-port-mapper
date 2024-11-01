@@ -7,7 +7,7 @@ import { raceSignal } from 'race-signal'
 import type { DiscoverGateway } from '../discovery/index.js'
 import type { MapPortOptions, UnmapPortOptions } from '../index.js'
 import type { Client } from '../types.js'
-import type { AbortOptions } from 'abort-options'
+import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
 const debug = logger('nat-port-mapper:pmp')

@@ -5,7 +5,7 @@ import { anySignal } from 'any-signal'
 import first from 'it-first'
 import type { InternetGatewayDevice } from '../upnp/device'
 import type { Service, SSDP } from '@achingbrain/ssdp'
-import type { AbortOptions } from 'abort-options'
+import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:discovery')
 

@@ -1,5 +1,5 @@
 import type { MapPortOptions, UnmapPortOptions } from './index.js'
-import type { AbortOptions } from 'abort-options'
+import type { AbortOptions } from 'abort-error'
 
 export interface Client {
   close(options?: AbortOptions): Promise<void>

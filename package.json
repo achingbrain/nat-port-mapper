@@ -147,7 +147,7 @@
   "dependencies": {
     "@achingbrain/ssdp": "^4.1.0",
     "@libp2p/logger": "^5.0.1",
-    "abort-options": "^1.0.1",
+    "abort-error": "^1.0.0",
     "any-signal": "^4.1.1",
     "default-gateway": "^7.2.2",
     "err-code": "^3.0.1",

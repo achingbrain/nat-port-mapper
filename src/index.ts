@@ -60,7 +60,7 @@ import { discoverGateway } from './discovery/index.js'
 import { PMPClient } from './pmp/index.js'
 import { UPNPClient } from './upnp/index.js'
 import type { Client } from './types.js'
-import type { AbortOptions } from 'abort-options'
+import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper')
 
