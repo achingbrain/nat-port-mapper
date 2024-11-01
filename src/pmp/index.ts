@@ -3,8 +3,11 @@ import { EventEmitter } from 'events'
 import { logger } from '@libp2p/logger'
 import errCode from 'err-code'
 import defer, { type DeferredPromise } from 'p-defer'
+import { raceSignal } from 'race-signal'
 import type { DiscoverGateway } from '../discovery/index.js'
-import type { Client, MapPortOptions, UnmapPortOptions } from '../index.js'
+import type { MapPortOptions, UnmapPortOptions } from '../index.js'
+import type { Client } from '../types.js'
+import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
 const debug = logger('nat-port-mapper:pmp')
@@ -19,7 +22,7 @@ const OP_MAP_UDP = 1
 const OP_MAP_TCP = 2
 const SERVER_DELTA = 128
 
-// Resulit codes
+// Result codes
 const RESULT_CODES: Record<number, string> = {
   0: 'Success',
   1: 'Unsupported Version',
@@ -47,7 +50,7 @@ export class PMPClient extends EventEmitter implements Client {
   private reqActive: boolean
   private readonly discoverGateway: () => DiscoverGateway
   private gateway?: string
-  private cancelGatewayDiscovery?: () => Promise<void>
+  private cancelGatewayDiscovery?: (options?: AbortOptions) => Promise<void>
 
   static createClient (discoverGateway: () => DiscoverGateway): PMPClient {
     return new PMPClient(discoverGateway)
@@ -102,7 +105,7 @@ export class PMPClient extends EventEmitter implements Client {
     const discoverGateway = this.discoverGateway()
     this.cancelGatewayDiscovery = discoverGateway.cancel
 
-    const gateway = await discoverGateway.gateway()
+    const gateway = await discoverGateway.gateway(opts)
     this.cancelGatewayDiscovery = undefined
 
     this.gateway = new URL(gateway.location).host
@@ -111,7 +114,7 @@ export class PMPClient extends EventEmitter implements Client {
 
     this.request(opcode, opts, deferred)
 
-    await deferred.promise
+    await raceSignal(deferred.promise, opts.signal)
   }
 
   async unmap (opts: UnmapPortOptions): Promise<void> {
@@ -125,13 +128,13 @@ export class PMPClient extends EventEmitter implements Client {
     })
   }
 
-  async externalIp (): Promise<string> {
+  async externalIp (options?: AbortOptions): Promise<string> {
     debug('Client#externalIp()')
 
     const discoverGateway = this.discoverGateway()
     this.cancelGatewayDiscovery = discoverGateway.cancel
 
-    const gateway = await discoverGateway.gateway()
+    const gateway = await discoverGateway.gateway(options)
     this.cancelGatewayDiscovery = undefined
 
     this.gateway = new URL(gateway.location).host
@@ -143,7 +146,7 @@ export class PMPClient extends EventEmitter implements Client {
     return deferred.promise
   }
 
-  async close (): Promise<void> {
+  async close (options?: AbortOptions): Promise<void> {
     debug('Client#close()')
 
     if (this.socket != null) {
@@ -157,7 +160,7 @@ export class PMPClient extends EventEmitter implements Client {
     this.reqActive = false
 
     if (this.cancelGatewayDiscovery != null) {
-      await this.cancelGatewayDiscovery()
+      await this.cancelGatewayDiscovery(options)
     }
   }
 

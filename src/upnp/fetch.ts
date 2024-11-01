@@ -46,7 +46,7 @@ export async function fetchXML (url: URL, init: RequestInit): Promise<string> {
 
     request.on('response', (response) => {
       if (response.statusCode === 302 && response.headers.location != null) {
-        log('Redirecting to %s', response.headers.location)
+        log('redirecting to %s', response.headers.location)
         fetchXML(new URL(response.headers.location), init)
           .then(resolve, reject)
         return

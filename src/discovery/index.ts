@@ -1,15 +1,17 @@
+import { setMaxListeners } from 'node:events'
 import ssdp from '@achingbrain/ssdp'
 import { logger } from '@libp2p/logger'
+import { anySignal } from 'any-signal'
 import first from 'it-first'
-import pTimeout from 'p-timeout'
 import type { InternetGatewayDevice } from '../upnp/device'
 import type { Service, SSDP } from '@achingbrain/ssdp'
+import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:discovery')
 
 export interface DiscoverGateway {
-  gateway(): Promise<Service<InternetGatewayDevice>>
-  cancel(): Promise<void>
+  gateway(options?: AbortOptions): Promise<Service<InternetGatewayDevice>>
+  cancel(options?: AbortOptions): Promise<void>
 }
 
 export interface DiscoveryOptions {
@@ -22,11 +24,6 @@ export interface DiscoveryOptions {
    * Rediscover gateway after this number of ms
    */
   timeout?: number
-
-  /**
-   * Only search the network for this long
-   */
-  discoveryTimeout?: number
 }
 
 const ST = 'urn:schemas-upnp-org:device:InternetGatewayDevice:1'
@@ -35,22 +32,22 @@ const ONE_HOUR = ONE_MINUTE * 60
 
 export function discoverGateway (options: DiscoveryOptions = {}): () => DiscoverGateway {
   const timeout = options.timeout ?? ONE_HOUR
-  const discoveryTimeout = options.discoveryTimeout ?? ONE_MINUTE
   let service: Service<InternetGatewayDevice>
   let expires: number
+  const shutdownController = new AbortController()
+  setMaxListeners(Infinity, shutdownController.signal)
 
   return () => {
-    let discovery: SSDP
-    let clear: (() => void) | undefined
-
     const discover: DiscoverGateway = {
-      gateway: async () => {
+      gateway: async (opts?: AbortOptions) => {
+        opts?.signal?.throwIfAborted()
+
         if (service != null && !(expires < Date.now())) {
           return service
         }
 
         if (options.gateway != null) {
-          log('Using overridden gateway address %s', options.gateway)
+          log('using overridden gateway address %s', options.gateway)
 
           if (!options.gateway.startsWith('http')) {
             options.gateway = `http://${options.gateway}`
@@ -75,45 +72,43 @@ export function discoverGateway (options: DiscoveryOptions = {}): () => Discover
             uniqueServiceName: 'unknown'
           }
         } else {
-          if (discovery == null) {
-            discovery = await ssdp({
-              start: false
+          log('create discovery')
+          let discovery: SSDP | undefined
+
+          try {
+            discovery = await ssdp()
+            discovery.on('transport:outgoing-message', (socket, message, remote) => {
+              log.trace('-> Outgoing to %s:%s via %s - %s', remote.address, remote.port, socket.type, message)
             })
-            discovery.on('error', (err) => {
-              log.error('ssdp error', err)
+            discovery.on('transport:incoming-message', (message, remote) => {
+              log.trace('<- Incoming from %s:%s - %s', remote.address, remote.port, message)
             })
-            await discovery.start()
+
+            const signal = anySignal([shutdownController.signal, opts?.signal])
+            setMaxListeners(Infinity, signal)
+
+            const result = await first(discovery.discover<InternetGatewayDevice>({
+              serviceType: ST,
+              signal
+            }))
+
+            if (result == null) {
+              throw new Error('Could not discover gateway')
+            }
+
+            log('discovered gateway %s', result.location)
+
+            expires = Date.now() + timeout
+            service = result
+          } finally {
+            await discovery?.stop()
           }
-
-          log('Discovering gateway')
-          const clearable = pTimeout(first(discovery.discover<InternetGatewayDevice>(ST)), {
-            milliseconds: discoveryTimeout
-          })
-
-          clear = clearable.clear
-
-          const result = await clearable
-
-          if (result == null) {
-            throw new Error('Could not discover gateway')
-          }
-
-          log('Discovered gateway %s', result.location)
-
-          service = result
-          expires = Date.now() + timeout
         }
 
         return service
       },
       cancel: async () => {
-        if (discovery != null) {
-          await discovery.stop()
-        }
-
-        if (clear != null) {
-          clear()
-        }
+        shutdownController.abort()
       }
     }
 

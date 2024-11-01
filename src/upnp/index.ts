@@ -1,15 +1,17 @@
 import { logger } from '@libp2p/logger'
 import { Device } from './device.js'
 import type { DiscoverGateway } from '../discovery/index.js'
-import type { Client, MapPortOptions, UnmapPortOptions } from '../index.js'
+import type { MapPortOptions, UnmapPortOptions } from '../index.js'
+import type { Client } from '../types.js'
+import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:upnp')
 
 export class UPNPClient implements Client {
   private closed: boolean
   private readonly discoverGateway: () => DiscoverGateway
-  private cancelGatewayDiscovery?: () => Promise<void>
-  private readonly abortController: AbortController
+  private cancelGatewayDiscovery?: (options?: AbortOptions) => Promise<void>
+  private readonly shutdownController: AbortController
 
   static createClient (discoverGateway: () => DiscoverGateway): UPNPClient {
     return new UPNPClient(discoverGateway)
@@ -20,7 +22,7 @@ export class UPNPClient implements Client {
     this.closed = false
 
     // used to terminate network operations on shutdown
-    this.abortController = new AbortController()
+    this.shutdownController = new AbortController()
   }
 
   async map (options: MapPortOptions): Promise<void> {
@@ -41,10 +43,10 @@ export class UPNPClient implements Client {
       ttl = Number(options.ttl)
     }
 
-    log('Mapping local port %d to public port %d', options.localPort, options.publicPort)
+    log('mapping local port %d to public port %d', options.localPort, options.publicPort)
 
     await gateway.run('AddPortMapping', [
-      ['NewRemoteHost', ''],
+      ['NewRemoteHost', options.publicHost ?? ''],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', protocol],
       ['NewInternalPort', options.localPort],
@@ -53,7 +55,7 @@ export class UPNPClient implements Client {
       ['NewPortMappingDescription', description],
       ['NewLeaseDuration', ttl],
       ['NewProtocol', options.protocol]
-    ], this.abortController.signal)
+    ], this.shutdownController.signal)
   }
 
   async unmap (options: UnmapPortOptions): Promise<void> {
@@ -64,21 +66,22 @@ export class UPNPClient implements Client {
     const gateway = await this.findGateway()
 
     await gateway.run('DeletePortMapping', [
-      ['NewRemoteHost', ''],
+      ['NewRemoteHost', options.publicHost ?? ''],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', options.protocol]
-    ], this.abortController.signal)
+    ], this.shutdownController.signal)
   }
 
-  async externalIp (): Promise<string> {
+  async externalIp (options?: AbortOptions): Promise<string> {
     if (this.closed) {
       throw new Error('client is closed')
     }
 
-    log('Discover external IP address')
+    log('discover external IP address')
 
-    const gateway = await this.findGateway()
-    const data = await gateway.run('GetExternalIPAddress', [], this.abortController.signal)
+    const gateway = await this.findGateway(options)
+
+    const data = await gateway.run('GetExternalIPAddress', [], this.shutdownController.signal)
 
     let key = null
     Object.keys(data).some(function (k) {
@@ -92,11 +95,11 @@ export class UPNPClient implements Client {
       throw new Error('Incorrect response')
     }
 
-    log('Discovered external IP address %s', data[key].NewExternalIPAddress)
+    log('discovered external IP address %s', data[key].NewExternalIPAddress)
     return data[key].NewExternalIPAddress
   }
 
-  async findGateway (): Promise<Device> {
+  async findGateway (options?: AbortOptions): Promise<Device> {
     if (this.closed) {
       throw new Error('client is closed')
     }
@@ -104,20 +107,20 @@ export class UPNPClient implements Client {
     const discovery = this.discoverGateway()
     this.cancelGatewayDiscovery = discovery.cancel
 
-    const service = await discovery.gateway()
+    const service = await discovery.gateway(options)
 
     this.cancelGatewayDiscovery = undefined
 
     return new Device(service)
   }
 
-  async close (): Promise<void> {
+  async close (options?: AbortOptions): Promise<void> {
     this.closed = true
 
-    this.abortController.abort()
+    this.shutdownController.abort()
 
     if (this.cancelGatewayDiscovery != null) {
-      await this.cancelGatewayDiscovery()
+      await this.cancelGatewayDiscovery(options)
     }
   }
 }

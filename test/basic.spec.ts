@@ -1,12 +1,27 @@
-import { type MapPortOptions, upnpNat } from '../src/index.js'
+import { expect } from 'aegir/chai'
+import { upnpNat } from '../src/index.js'
+import type { MapPortOptions, NatAPI } from '../src/index.js'
 
 describe('nat-port-mapper', () => {
+  let client: NatAPI
+
+  before(() => {
+    if (process.env.CI != null) {
+      return // CI environments don't have uPNP routers!
+    }
+
+    client = upnpNat()
+  })
+
+  after(async () => {
+    await client?.close()
+  })
+
   it('should map a port', async () => {
     if (process.env.CI != null) {
       return // CI environments don't have uPNP routers!
     }
 
-    const client = upnpNat()
     const details: Partial<MapPortOptions> = {
       localPort: 48932,
       protocol: 'TCP'
@@ -20,5 +35,17 @@ describe('nat-port-mapper', () => {
           process.exit(0)
         })
     })
+  })
+
+  it('should discover an external ip address', async () => {
+    if (process.env.CI != null) {
+      return // CI environments don't have uPNP routers!
+    }
+
+    const ip = await client.externalIp({
+      signal: AbortSignal.timeout(5000)
+    })
+
+    expect(ip).to.be.ok()
   })
 })
