@@ -1,3 +1,9 @@
+## [2.0.1](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.0...v2.0.1) (2024-11-01)
+
+### Bug Fixes
+
+* update pmp function ([528b966](https://github.com/achingbrain/nat-port-mapper/commit/528b9668b34d4624005fcc75ec50f86de8f0ef8f))
+
 ## [2.0.0](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.18...v2.0.0) (2024-11-01)
 
 ### ⚠ BREAKING CHANGES
