@@ -51,7 +51,7 @@
   },
   "release": {
     "branches": [
-      "master"
+      "main"
     ],
     "plugins": [
       [
@@ -139,6 +139,7 @@
     "lint": "aegir lint",
     "dep-check": "aegir dep-check",
     "build": "aegir build --no-bundle",
+    "docs": "aegir docs",
     "release": "aegir release",
     "test": "aegir test",
     "test:node": "aegir test -t node"

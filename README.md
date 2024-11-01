@@ -1,17 +1,28 @@
 # @achingbrain/nat-port-mapper
 
 [![codecov](https://img.shields.io/codecov/c/github/achingbrain/nat-port-mapper.svg?style=flat-square)](https://codecov.io/gh/achingbrain/nat-port-mapper)
-[![CI](https://img.shields.io/github/actions/workflow/status/achingbrain/nat-port-mapper/js-test-and-release.yml?branch=master\&style=flat-square)](https://github.com/achingbrain/nat-port-mapper/actions/workflows/js-test-and-release.yml?query=branch%3Amaster)
+[![CI](https://img.shields.io/github/actions/workflow/status/achingbrain/nat-port-mapper/js-test-and-release.yml?branch=main\&style=flat-square)](https://github.com/achingbrain/nat-port-mapper/actions/workflows/js-test-and-release.yml?query=branch%3Amain)
 
 > Port mapping with UPnP and NAT-PMP
 
-# Install
+# About
 
-```console
-$ npm i @achingbrain/nat-port-mapper
-```
+<!--
 
-## Usage
+!IMPORTANT!
+
+Everything in this README between "# About" and "# Install" is automatically
+generated and will be overwritten the next time the doc generator is run.
+
+To make changes to this section, please update the @packageDocumentation section
+of src/index.js or src/index.ts
+
+To experiment with formatting, please run "npm run docs" from the root of this
+repo and examine the changes made.
+
+-->
+
+## Example
 
 ```js
 import { upnpNat } from '@achingbrain/nat-port-mapper'
@@ -61,6 +72,12 @@ Based on [alxhotel/nat-api](https://github.com/alxhotel/nat-api)
 - <http://miniupnp.free.fr/nat-pmp.html>
 - <http://wikipedia.org/wiki/NAT_Port_Mapping_Protocol>
 - <http://tools.ietf.org/html/draft-cheshire-nat-pmp-03>
+
+# Install
+
+```console
+$ npm i @achingbrain/nat-port-mapper
+```
 
 # License
 
