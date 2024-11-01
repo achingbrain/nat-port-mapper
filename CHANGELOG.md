@@ -1,3 +1,9 @@
+## [2.0.2](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.1...v2.0.2) (2024-11-01)
+
+### Bug Fixes
+
+* make fields optional ([c5cf08f](https://github.com/achingbrain/nat-port-mapper/commit/c5cf08fa35ef10dcc7b10d124b69a448a2e9fea5))
+
 ## [2.0.1](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.0...v2.0.1) (2024-11-01)
 
 ### Bug Fixes
