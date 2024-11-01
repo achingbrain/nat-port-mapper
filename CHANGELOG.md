@@ -1,3 +1,13 @@
+## [2.0.0](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.18...v2.0.0) (2024-11-01)
+
+### ⚠ BREAKING CHANGES
+
+* accept abort signals during operations (#77)
+
+### Features
+
+* accept abort signals during operations ([#77](https://github.com/achingbrain/nat-port-mapper/issues/77)) ([c6197ac](https://github.com/achingbrain/nat-port-mapper/commit/c6197ac09857a9e1f84ab6667b86d745c823753e))
+
 ## [1.0.18](https://github.com/achingbrain/nat-port-mapper/compare/v1.0.17...v1.0.18) (2024-11-01)
 
 ### Bug Fixes
