@@ -36,23 +36,18 @@ const client = await upnpNat({
 })
 
 // Map public port 1000 to private port 1000 with TCP
-await client.map({
-  localPort: 1000,
+await client.map(1000, {
   protocol: 'TCP'
 })
 
 // Map public port 2000 to private port 3000 with UDP
-await client.map({
+await client.map(3000, {
   publicPort: 2000,
-  localPort: 3000,
   protocol: 'UDP'
 })
 
-// Unmap port public and private port 1000 with TCP
-await client.unmap({
-  localPort: 1000,
-  protocol: 'TCP'
-})
+// Unmap previously mapped private port 1000
+await client.unmap(1000)
 
 // Get external IP
 const externalIp = await client.externalIp()
@@ -60,7 +55,7 @@ const externalIp = await client.externalIp()
 console.log('External IP:', ip)
 
 // Unmap all mapped ports
-client.close()
+await client.close()
 ```
 
 ## Credits
