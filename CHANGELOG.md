@@ -1,3 +1,9 @@
+## [2.0.3](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.2...v2.0.3) (2024-11-02)
+
+### Bug Fixes
+
+* make ports required ([eaae326](https://github.com/achingbrain/nat-port-mapper/commit/eaae32632a38e20108bfe413671dd978b2e14b15))
+
 ## [2.0.2](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.1...v2.0.2) (2024-11-01)
 
 ### Bug Fixes
