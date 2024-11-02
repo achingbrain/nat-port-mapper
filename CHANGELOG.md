@@ -1,3 +1,9 @@
+## [2.0.4](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.3...v2.0.4) (2024-11-02)
+
+### Documentation
+
+* update readme example ([4ebacbb](https://github.com/achingbrain/nat-port-mapper/commit/4ebacbb8e68ca8f9ce9d90fe909c9e5278013a9b))
+
 ## [2.0.3](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.2...v2.0.3) (2024-11-02)
 
 ### Bug Fixes
