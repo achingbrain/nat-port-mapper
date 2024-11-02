@@ -1,3 +1,9 @@
+## [2.0.5](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.4...v2.0.5) (2024-11-02)
+
+### Bug Fixes
+
+* support upnp 2 any port mapping ([75142be](https://github.com/achingbrain/nat-port-mapper/commit/75142be22f94f304c462e4d8af5eb84192022504))
+
 ## [2.0.4](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.3...v2.0.4) (2024-11-02)
 
 ### Documentation
