@@ -87,7 +87,7 @@ export class PMPClient extends EventEmitter implements Client {
     this.socket.bind(CLIENT_PORT)
   }
 
-  async map (localPort: number, opts: InternalMapOptions): Promise<void> {
+  async map (localPort: number, opts: InternalMapOptions): Promise<number> {
     log('Client#portMapping()')
     let opcode: typeof OP_MAP_TCP | typeof OP_MAP_UDP
     switch (String(opts.protocol ?? 'tcp').toLowerCase()) {
@@ -109,11 +109,15 @@ export class PMPClient extends EventEmitter implements Client {
 
     this.gateway = new URL(gateway.location).host
 
-    const deferred = defer()
+    const deferred = defer<any>()
 
     this.request(opcode, deferred, localPort, opts)
 
     await raceSignal(deferred.promise, opts.signal)
+
+    const result = await deferred.promise
+
+    return result.public
   }
 
   async unmap (localPort: number, opts: InternalMapOptions): Promise<void> {

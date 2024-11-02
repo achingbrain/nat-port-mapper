@@ -26,7 +26,7 @@ export class UPNPClient implements Client {
     this.shutdownController = new AbortController()
   }
 
-  async map (localPort: number, options: InternalMapOptions): Promise<void> {
+  async map (localPort: number, options: InternalMapOptions): Promise<number> {
     if (this.closed) {
       throw new Error('client is closed')
     }
@@ -49,7 +49,7 @@ export class UPNPClient implements Client {
 
     log('mapping local port %d to public port %d', localPort, options.publicPort)
 
-    await gateway.run('AddPortMapping', [
+    const response = await gateway.run('AddAnyPortMapping', [
       ['NewRemoteHost', options.publicHost ?? ''],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', protocol],
@@ -57,9 +57,11 @@ export class UPNPClient implements Client {
       ['NewInternalClient', options.localAddress],
       ['NewEnabled', 1],
       ['NewPortMappingDescription', description],
-      ['NewLeaseDuration', ttl],
-      ['NewProtocol', options.protocol]
+      ['NewLeaseDuration', ttl]
     ], signal)
+    const key = this.findNamespacedKey('AddAnyPortMappingResponse', response)
+
+    return Number(response[key].NewReservedPort)
   }
 
   async unmap (localPort: number, options: InternalMapOptions): Promise<void> {
@@ -91,22 +93,29 @@ export class UPNPClient implements Client {
 
     const gateway = await this.findGateway(options)
 
-    const data = await gateway.run('GetExternalIPAddress', [], this.shutdownController.signal)
+    const response = await gateway.run('GetExternalIPAddress', [], this.shutdownController.signal)
+    const key = this.findNamespacedKey('GetExternalIPAddressResponse', response)
 
-    let key = null
-    Object.keys(data).some(function (k) {
-      if (!/:GetExternalIPAddressResponse$/.test(k)) return false
+    log('discovered external IP address %s', response[key].NewExternalIPAddress)
+    return response[key].NewExternalIPAddress
+  }
 
-      key = k
+  private findNamespacedKey (key: string, data: any): string {
+    let ns = null
+    Object.keys(data).some((k) => {
+      if (new RegExp(`!/:${key}$/`).test(k)) {
+        return false
+      }
+
+      ns = k
       return true
     })
 
-    if (key == null) {
+    if (ns == null) {
       throw new Error('Incorrect response')
     }
 
-    log('discovered external IP address %s', data[key].NewExternalIPAddress)
-    return data[key].NewExternalIPAddress
+    return ns
   }
 
   async findGateway (options?: AbortOptions): Promise<Device> {

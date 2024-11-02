@@ -32,7 +32,7 @@ export class NatAPI {
     this.openPorts = new Map()
   }
 
-  async map (localPort: number, options: MapPortOptions): Promise<void> {
+  async map (localPort: number, options: MapPortOptions): Promise<number> {
     if (this.destroyed) {
       throw new Error('client is destroyed')
     }
@@ -41,7 +41,7 @@ export class NatAPI {
     const opts = this.validateInput(localPort, options)
 
     // UDP or TCP
-    await this.client.map(localPort, opts)
+    const mappedPort = await this.client.map(localPort, opts)
 
     this.openPorts.set(localPort, {
       ...opts,
@@ -58,6 +58,8 @@ export class NatAPI {
     }
 
     log('port %d:%d for protocol %s mapped on router', opts.publicPort, localPort, opts.protocol)
+
+    return mappedPort
   }
 
   async unmap (localPort: number, options: AbortOptions): Promise<void> {

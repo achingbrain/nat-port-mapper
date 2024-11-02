@@ -55,6 +55,8 @@ import { PMPClient } from './pmp/index.js'
 import { UPNPClient } from './upnp/index.js'
 import type { AbortOptions } from 'abort-error'
 
+export type Protocol = 'TCP' | 'UDP'
+
 export interface NatAPIOptions {
   /**
    * TTL in seconds, minimum one minute
@@ -86,7 +88,7 @@ export interface NatAPIOptions {
 
 export interface MapPortOptions extends AbortOptions {
   /**
-   * The external port to map. If omitted the `localPort` value will be used.
+   * The external port to map. If omitted a free port will be chosen.
    *
    * @default localPort
    */
@@ -110,7 +112,7 @@ export interface MapPortOptions extends AbortOptions {
    *
    * @default 'TCP'
    */
-  protocol?: 'TCP' | 'UDP'
+  protocol?: Protocol
 
   /**
    * Some metadata about the mapping
@@ -141,8 +143,11 @@ export interface NatAPI {
 
   /**
    * Map a local port to one on the external network interface
+   *
+   * Returns the external port number that was mapped - this may be different
+   * from the requested port number if that port was not free.
    */
-  map(localPort: number, options?: MapPortOptions): Promise<void>
+  map(localPort: number, options?: MapPortOptions): Promise<number>
 
   /**
    * Unmap a previously mapped port

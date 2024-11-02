@@ -26,7 +26,7 @@ export interface DiscoveryOptions extends AbortOptions {
   timeout?: number
 }
 
-const ST = 'urn:schemas-upnp-org:device:InternetGatewayDevice:1'
+const ST = 'urn:schemas-upnp-org:device:InternetGatewayDevice:2'
 const ONE_MINUTE = 60000
 const ONE_HOUR = ONE_MINUTE * 60
 

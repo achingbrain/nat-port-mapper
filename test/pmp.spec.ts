@@ -23,8 +23,9 @@ describe('pmp-nat-port-mapper', () => {
     }
 
     const port = 48932
+    const mapped = await client.map(port)
 
-    await client.map(port)
+    expect(mapped).to.be.a('number')
 
     process.on('SIGINT', () => {
       void client.unmap(port)
