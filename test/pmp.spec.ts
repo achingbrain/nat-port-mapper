@@ -1,6 +1,6 @@
 import { expect } from 'aegir/chai'
 import { pmpNat } from '../src/index.js'
-import type { MapPortOptions, NatAPI } from '../src/index.js'
+import type { NatAPI } from '../src/index.js'
 
 describe('pmp-nat-port-mapper', () => {
   let client: NatAPI
@@ -22,15 +22,12 @@ describe('pmp-nat-port-mapper', () => {
       return // CI environments don't have uPNP routers!
     }
 
-    const details: Partial<MapPortOptions> = {
-      localPort: 48932,
-      protocol: 'TCP'
-    }
+    const port = 48932
 
-    await client.map(details)
+    await client.map(port)
 
     process.on('SIGINT', () => {
-      void client.unmap(details)
+      void client.unmap(port)
         .finally(() => {
           process.exit(0)
         })

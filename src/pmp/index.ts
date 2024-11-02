@@ -5,8 +5,7 @@ import errCode from 'err-code'
 import defer, { type DeferredPromise } from 'p-defer'
 import { raceSignal } from 'race-signal'
 import type { DiscoverGateway } from '../discovery/index.js'
-import type { MapPortOptions, UnmapPortOptions } from '../index.js'
-import type { Client } from '../types.js'
+import type { Client, InternalMapOptions } from '../types.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
@@ -88,9 +87,9 @@ export class PMPClient extends EventEmitter implements Client {
     this.socket.bind(CLIENT_PORT)
   }
 
-  async map (opts: MapPortOptions): Promise<void> {
+  async map (localPort: number, opts: InternalMapOptions): Promise<void> {
     log('Client#portMapping()')
-    let opcode: number
+    let opcode: typeof OP_MAP_TCP | typeof OP_MAP_UDP
     switch (String(opts.protocol ?? 'tcp').toLowerCase()) {
       case 'tcp':
         opcode = OP_MAP_TCP
@@ -112,15 +111,15 @@ export class PMPClient extends EventEmitter implements Client {
 
     const deferred = defer()
 
-    this.request(opcode, opts, deferred)
+    this.request(opcode, deferred, localPort, opts)
 
     await raceSignal(deferred.promise, opts.signal)
   }
 
-  async unmap (opts: UnmapPortOptions): Promise<void> {
+  async unmap (localPort: number, opts: InternalMapOptions): Promise<void> {
     log('Client#portUnmapping()')
 
-    await this.map({
+    await this.map(localPort, {
       ...opts,
       description: '',
       localAddress: '',
@@ -141,7 +140,7 @@ export class PMPClient extends EventEmitter implements Client {
 
     const deferred = defer<string>()
 
-    this.request(OP_EXTERNAL_IP, {}, deferred)
+    this.request(OP_EXTERNAL_IP, deferred)
 
     return deferred.promise
   }
@@ -168,15 +167,14 @@ export class PMPClient extends EventEmitter implements Client {
    * Queues a UDP request to be send to the gateway device.
    */
 
-  request (op: number, obj: PortMappingOptions, deferred: DeferredPromise<any>): void {
+  request (op: typeof OP_EXTERNAL_IP, deferred: DeferredPromise<any>): void
+  request (op: typeof OP_MAP_TCP | typeof OP_MAP_UDP, deferred: DeferredPromise<any>, localPort: number, obj: InternalMapOptions): void
+  request (op: number, deferred: DeferredPromise<any>, localPort?: any, obj?: InternalMapOptions): void {
     log('Client#request()', [op, obj])
 
     let buf
     let size
     let pos = 0
-
-    let internal
-    let external
     let ttl
 
     switch (op) {
@@ -184,16 +182,6 @@ export class PMPClient extends EventEmitter implements Client {
       case OP_MAP_TCP:
         if (obj == null) {
           throw new Error('mapping a port requires an "options" object')
-        }
-
-        internal = Number(obj.private ?? obj.internal ?? 0)
-        if (internal !== (internal | 0) ?? internal < 0) {
-          throw new Error('the "private" port must be a whole integer >= 0')
-        }
-
-        external = Number(obj.public ?? obj.external ?? 0)
-        if (external !== (external | 0) ?? external < 0) {
-          throw new Error('the "public" port must be a whole integer >= 0')
         }
 
         ttl = Number(obj.ttl ?? 0)
@@ -210,9 +198,9 @@ export class PMPClient extends EventEmitter implements Client {
         pos++ // OP = x
         buf.writeUInt16BE(0, pos)
         pos += 2 // Reserved (MUST be zero)
-        buf.writeUInt16BE(internal, pos)
+        buf.writeUInt16BE(localPort, pos)
         pos += 2 // Internal Port
-        buf.writeUInt16BE(external, pos)
+        buf.writeUInt16BE(obj.publicPort, pos)
         pos += 2 // Requested External Port
         buf.writeUInt32BE(ttl, pos)
         pos += 4 // Requested Port Mapping Lifetime in Seconds

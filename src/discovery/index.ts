@@ -14,7 +14,7 @@ export interface DiscoverGateway {
   cancel(options?: AbortOptions): Promise<void>
 }
 
-export interface DiscoveryOptions {
+export interface DiscoveryOptions extends AbortOptions {
   /**
    * Do not search the network for a gateway, use this instead
    */
@@ -30,8 +30,7 @@ const ST = 'urn:schemas-upnp-org:device:InternetGatewayDevice:1'
 const ONE_MINUTE = 60000
 const ONE_HOUR = ONE_MINUTE * 60
 
-export function discoverGateway (options: DiscoveryOptions = {}): () => DiscoverGateway {
-  const timeout = options.timeout ?? ONE_HOUR
+export function discoverGateway (): () => DiscoverGateway {
   let service: Service<InternetGatewayDevice>
   let expires: number
   const shutdownController = new AbortController()
@@ -39,14 +38,16 @@ export function discoverGateway (options: DiscoveryOptions = {}): () => Discover
 
   return () => {
     const discover: DiscoverGateway = {
-      gateway: async (opts?: AbortOptions) => {
-        opts?.signal?.throwIfAborted()
+      gateway: async (options?: DiscoveryOptions) => {
+        options?.signal?.throwIfAborted()
+
+        const timeout = options?.timeout ?? ONE_HOUR
 
         if (service != null && !(expires < Date.now())) {
           return service
         }
 
-        if (options.gateway != null) {
+        if (options?.gateway != null) {
           log('using overridden gateway address %s', options.gateway)
 
           if (!options.gateway.startsWith('http')) {
@@ -84,7 +85,7 @@ export function discoverGateway (options: DiscoveryOptions = {}): () => Discover
               log.trace('<- Incoming from %s:%s - %s', remote.address, remote.port, message)
             })
 
-            const signal = anySignal([shutdownController.signal, opts?.signal])
+            const signal = anySignal([shutdownController.signal, options?.signal])
             setMaxListeners(Infinity, signal)
 
             const result = await first(discovery.discover<InternetGatewayDevice>({

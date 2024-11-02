@@ -1,8 +1,9 @@
+import { setMaxListeners } from 'node:events'
 import { logger } from '@libp2p/logger'
+import { anySignal } from 'any-signal'
 import { Device } from './device.js'
 import type { DiscoverGateway } from '../discovery/index.js'
-import type { MapPortOptions, UnmapPortOptions } from '../index.js'
-import type { Client } from '../types.js'
+import type { Client, InternalMapOptions } from '../types.js'
 import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:upnp')
@@ -25,10 +26,13 @@ export class UPNPClient implements Client {
     this.shutdownController = new AbortController()
   }
 
-  async map (options: MapPortOptions): Promise<void> {
+  async map (localPort: number, options: InternalMapOptions): Promise<void> {
     if (this.closed) {
       throw new Error('client is closed')
     }
+
+    const signal = anySignal([this.shutdownController.signal, options.signal])
+    setMaxListeners(Infinity, signal)
 
     const gateway = await this.findGateway()
     const description = options.description ?? 'node:nat:upnp'
@@ -43,33 +47,39 @@ export class UPNPClient implements Client {
       ttl = Number(options.ttl)
     }
 
-    log('mapping local port %d to public port %d', options.localPort, options.publicPort)
+    log('mapping local port %d to public port %d', localPort, options.publicPort)
 
     await gateway.run('AddPortMapping', [
       ['NewRemoteHost', options.publicHost ?? ''],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', protocol],
-      ['NewInternalPort', options.localPort],
+      ['NewInternalPort', localPort],
       ['NewInternalClient', options.localAddress],
       ['NewEnabled', 1],
       ['NewPortMappingDescription', description],
       ['NewLeaseDuration', ttl],
       ['NewProtocol', options.protocol]
-    ], this.shutdownController.signal)
+    ], signal)
   }
 
-  async unmap (options: UnmapPortOptions): Promise<void> {
+  async unmap (localPort: number, options: InternalMapOptions): Promise<void> {
     if (this.closed) {
       throw new Error('client is closed')
     }
 
-    const gateway = await this.findGateway()
+    const signal = anySignal([this.shutdownController.signal, options.signal])
+    setMaxListeners(Infinity, signal)
+
+    const gateway = await this.findGateway({
+      ...options,
+      signal
+    })
 
     await gateway.run('DeletePortMapping', [
-      ['NewRemoteHost', options.publicHost ?? ''],
+      ['NewRemoteHost', options.publicHost],
       ['NewExternalPort', options.publicPort],
       ['NewProtocol', options.protocol]
-    ], this.shutdownController.signal)
+    ], signal)
   }
 
   async externalIp (options?: AbortOptions): Promise<string> {
