@@ -53,11 +53,13 @@ export async function fetchXML (url: URL, init: RequestInit): Promise<string> {
       }
 
       if (response.statusCode !== 200) {
-        throw new Error(`Request failed: ${response.statusCode}`) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+        reject(new Error(`Request failed: ${response.statusCode}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+        return
       }
 
       if (response.headers['content-type'] != null && !response.headers['content-type'].includes('/xml')) {
-        reject(new Error('Bad content type ' + response.headers['content-type'])); return
+        reject(new Error('Bad content type ' + response.headers['content-type']))
+        return
       }
 
       let body = ''
