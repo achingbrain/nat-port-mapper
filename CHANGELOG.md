@@ -1,3 +1,9 @@
+## [2.0.6](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.5...v2.0.6) (2024-11-22)
+
+### Bug Fixes
+
+* reject when mapping a port fails ([#78](https://github.com/achingbrain/nat-port-mapper/issues/78)) ([4b87305](https://github.com/achingbrain/nat-port-mapper/commit/4b873057e114f3388a5caa00cfb1689bd09ca9e9))
+
 ## [2.0.5](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.4...v2.0.5) (2024-11-02)
 
 ### Bug Fixes
