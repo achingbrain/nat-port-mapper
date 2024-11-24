@@ -1,3 +1,9 @@
+## [2.0.7](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.6...v2.0.7) (2024-11-24)
+
+### Bug Fixes
+
+* increase max listeners on shutdown controller signal ([#79](https://github.com/achingbrain/nat-port-mapper/issues/79)) ([6e1b344](https://github.com/achingbrain/nat-port-mapper/commit/6e1b344cf00fdb14b0c962fd5a098f8d4ba38698))
+
 ## [2.0.6](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.5...v2.0.6) (2024-11-22)
 
 ### Bug Fixes
