@@ -24,6 +24,7 @@ export class UPNPClient implements Client {
 
     // used to terminate network operations on shutdown
     this.shutdownController = new AbortController()
+    setMaxListeners(Infinity, this.shutdownController.signal)
   }
 
   async map (localPort: number, options: InternalMapOptions): Promise<number> {
