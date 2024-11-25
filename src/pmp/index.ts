@@ -49,7 +49,6 @@ export class PMPClient extends EventEmitter implements Client {
   private reqActive: boolean
   private readonly discoverGateway: () => DiscoverGateway
   private gateway?: string
-  private cancelGatewayDiscovery?: (options?: AbortOptions) => Promise<void>
 
   static createClient (discoverGateway: () => DiscoverGateway): PMPClient {
     return new PMPClient(discoverGateway)
@@ -102,10 +101,8 @@ export class PMPClient extends EventEmitter implements Client {
     }
 
     const discoverGateway = this.discoverGateway()
-    this.cancelGatewayDiscovery = discoverGateway.cancel
 
-    const gateway = await discoverGateway.gateway(opts)
-    this.cancelGatewayDiscovery = undefined
+    const gateway = await discoverGateway(opts)
 
     this.gateway = new URL(gateway.location).host
 
@@ -135,10 +132,7 @@ export class PMPClient extends EventEmitter implements Client {
     log('Client#externalIp()')
 
     const discoverGateway = this.discoverGateway()
-    this.cancelGatewayDiscovery = discoverGateway.cancel
-
-    const gateway = await discoverGateway.gateway(options)
-    this.cancelGatewayDiscovery = undefined
+    const gateway = await discoverGateway(options)
 
     this.gateway = new URL(gateway.location).host
 
@@ -161,10 +155,6 @@ export class PMPClient extends EventEmitter implements Client {
     this.listening = false
     this.req = null
     this.reqActive = false
-
-    if (this.cancelGatewayDiscovery != null) {
-      await this.cancelGatewayDiscovery(options)
-    }
   }
 
   /**
