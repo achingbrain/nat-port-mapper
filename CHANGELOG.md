@@ -1,3 +1,9 @@
+## [2.0.9](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.8...v2.0.9) (2024-11-25)
+
+### Bug Fixes
+
+* log errors during service discovery ([05b621b](https://github.com/achingbrain/nat-port-mapper/commit/05b621b96ca587fb4500fa4b43393b0626c466a8))
+
 ## [2.0.8](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.7...v2.0.8) (2024-11-25)
 
 ### Bug Fixes
