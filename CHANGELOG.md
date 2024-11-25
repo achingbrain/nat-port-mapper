@@ -1,3 +1,9 @@
+## [2.0.10](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.9...v2.0.10) (2024-11-25)
+
+### Bug Fixes
+
+* handle missing gateway ([6549f7d](https://github.com/achingbrain/nat-port-mapper/commit/6549f7db09051821f3ff8d5d5ac8b9e5802815cf))
+
 ## [2.0.9](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.8...v2.0.9) (2024-11-25)
 
 ### Bug Fixes
