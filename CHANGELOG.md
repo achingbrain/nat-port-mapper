@@ -1,3 +1,9 @@
+## [2.0.8](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.7...v2.0.8) (2024-11-25)
+
+### Bug Fixes
+
+* use signals for aborting gateway search ([#80](https://github.com/achingbrain/nat-port-mapper/issues/80)) ([1d571d8](https://github.com/achingbrain/nat-port-mapper/commit/1d571d8e4ab6614300f2fdadb5ce46845618bb21))
+
 ## [2.0.7](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.6...v2.0.7) (2024-11-24)
 
 ### Bug Fixes
