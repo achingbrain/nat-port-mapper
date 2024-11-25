@@ -90,6 +90,8 @@ export function discoverGateway (): () => DiscoverGateway {
 
           expires = Date.now() + timeout
           service = result
+        } catch (err) {
+          log.error('error during service discovery - %e', err)
         } finally {
           await discovery?.stop()
         }
