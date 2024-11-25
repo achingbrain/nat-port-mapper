@@ -11,7 +11,6 @@ const log = logger('nat-port-mapper:upnp')
 export class UPNPClient implements Client {
   private closed: boolean
   private readonly discoverGateway: () => DiscoverGateway
-  private cancelGatewayDiscovery?: (options?: AbortOptions) => Promise<void>
   private readonly shutdownController: AbortController
 
   static createClient (discoverGateway: () => DiscoverGateway): UPNPClient {
@@ -119,28 +118,25 @@ export class UPNPClient implements Client {
     return ns
   }
 
-  async findGateway (options?: AbortOptions): Promise<Device> {
+  private async findGateway (options?: AbortOptions): Promise<Device> {
     if (this.closed) {
       throw new Error('client is closed')
     }
 
-    const discovery = this.discoverGateway()
-    this.cancelGatewayDiscovery = discovery.cancel
+    const signal = anySignal([this.shutdownController.signal, options?.signal])
+    setMaxListeners(Infinity, signal)
 
-    const service = await discovery.gateway(options)
-
-    this.cancelGatewayDiscovery = undefined
+    const discover = this.discoverGateway()
+    const service = await discover({
+      ...options,
+      signal
+    })
 
     return new Device(service)
   }
 
-  async close (options?: AbortOptions): Promise<void> {
+  async close (): Promise<void> {
     this.closed = true
-
     this.shutdownController.abort()
-
-    if (this.cancelGatewayDiscovery != null) {
-      await this.cancelGatewayDiscovery(options)
-    }
   }
 }
