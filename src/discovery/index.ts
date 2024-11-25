@@ -8,7 +8,7 @@ import type { AbortOptions } from 'abort-error'
 const log = logger('nat-port-mapper:discovery')
 
 export interface DiscoverGateway {
-  (options?: AbortOptions): Promise<Service<InternetGatewayDevice>>
+  (options?: AbortOptions): Promise<Service<InternetGatewayDevice> | undefined>
 }
 
 export interface DiscoveryOptions extends AbortOptions {

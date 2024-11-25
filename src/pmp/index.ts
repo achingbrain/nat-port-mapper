@@ -104,6 +104,10 @@ export class PMPClient extends EventEmitter implements Client {
 
     const gateway = await discoverGateway(opts)
 
+    if (gateway == null) {
+      throw new Error('could not find gateway')
+    }
+
     this.gateway = new URL(gateway.location).host
 
     const deferred = defer<any>()
@@ -133,6 +137,10 @@ export class PMPClient extends EventEmitter implements Client {
 
     const discoverGateway = this.discoverGateway()
     const gateway = await discoverGateway(options)
+
+    if (gateway == null) {
+      throw new Error('could not find gateway')
+    }
 
     this.gateway = new URL(gateway.location).host
 

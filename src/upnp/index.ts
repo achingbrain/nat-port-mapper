@@ -132,7 +132,11 @@ export class UPNPClient implements Client {
       signal
     })
 
-    return new Device(service)
+    if (service != null) {
+      return new Device(service)
+    }
+
+    throw new Error('could not find gateway')
   }
 
   async close (): Promise<void> {
