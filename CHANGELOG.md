@@ -1,3 +1,13 @@
+## [3.0.0](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.10...v3.0.0) (2024-11-26)
+
+### ⚠ BREAKING CHANGES
+
+* use `findGateways` to find a gateway before mapping ports
+
+### Features
+
+* support multiple gateways ([#81](https://github.com/achingbrain/nat-port-mapper/issues/81)) ([8b46979](https://github.com/achingbrain/nat-port-mapper/commit/8b469794a4809a37ccbd43f274606e7de0d94710)), closes [#74](https://github.com/achingbrain/nat-port-mapper/issues/74)
+
 ## [2.0.10](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.9...v2.0.10) (2024-11-25)
 
 ### Bug Fixes
