@@ -160,10 +160,6 @@ export class PMPGateway extends EventEmitter implements Gateway {
   async stop (options?: AbortOptions): Promise<void> {
     log('Client#close()')
 
-    if (this.socket != null) {
-      this.socket.close()
-    }
-
     this.queue = []
     this.connecting = false
     this.listening = false
@@ -176,6 +172,10 @@ export class PMPGateway extends EventEmitter implements Gateway {
     }))
 
     this.refreshIntervals.clear()
+
+    if (this.socket != null) {
+      this.socket.close()
+    }
   }
 
   /**
