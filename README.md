@@ -64,9 +64,7 @@ for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10
 import { pmpNat } from '@achingbrain/nat-port-mapper'
 import { gateway4sync } from 'default-gateway'
 
-const client = pmpNat()
-
-const gateway = await client.getGateway(gateway4sync().gateway)
+const gateway = pmpNat(gateway4sync().gateway)
 
 // Map public port 1000 to private port 1000 with TCP
 await gateway.map(1000, {

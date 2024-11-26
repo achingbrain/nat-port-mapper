@@ -11,7 +11,7 @@ export class PMPClient extends EventEmitter {
     this.options = options
   }
 
-  async getGateway (ipAddress: string): Promise<Gateway> {
+  getGateway (ipAddress: string): Gateway {
     return new PMPGateway(ipAddress, this.options)
   }
 }

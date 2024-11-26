@@ -43,9 +43,7 @@
  * import { pmpNat } from '@achingbrain/nat-port-mapper'
  * import { gateway4sync } from 'default-gateway'
  *
- * const client = pmpNat()
- *
- * const gateway = await client.getGateway(gateway4sync().gateway)
+ * const gateway = pmpNat(gateway4sync().gateway)
  *
  * // Map public port 1000 to private port 1000 with TCP
  * await gateway.map(1000, {
@@ -81,7 +79,7 @@
  * - <http://tools.ietf.org/html/draft-cheshire-nat-pmp-03>
  */
 
-import { PMPClient } from './pmp/index.js'
+import { PMPGateway } from './pmp/gateway.js'
 import { UPnPClient } from './upnp/index.js'
 import type { AbortOptions } from 'abort-error'
 
@@ -208,12 +206,12 @@ export interface PMPNAT {
   /**
    * Use a specific network gateway for port mapping
    */
-  getGateway (ipAddress: string, options?: AbortOptions): Promise<Gateway>
+  getGateway (ipAddress: string, options?: AbortOptions): Gateway
 }
 
 /**
  * Create a NAT-PMP port mapper
  */
-export function pmpNat (options: GlobalMapPortOptions = {}): PMPNAT {
-  return new PMPClient(options)
+export function pmpNat (ipAddress: string, options: GlobalMapPortOptions = {}): Gateway {
+  return new PMPGateway(ipAddress, options)
 }
