@@ -42,16 +42,20 @@ export async function * discoverGateways (options?: AbortOptions): AsyncGenerato
 
       discovered.add(service.location.toString())
 
-      if (service.details.device.deviceType === UPNP_ST) {
-        log('discovered UPnP gateway %s %s', service.location, service.uniqueServiceName)
-        yield service
-      } else if (service.details.device.deviceType === UPNP2_ST) {
+      const deviceType = service.details.device?.deviceType ?? service.serviceType
+
+      if (deviceType === UPNP2_ST) {
         log('discovered UPnP2 gateway %s %s', service.location, service.uniqueServiceName)
+        yield service
+      } else if (deviceType === UPNP_ST) {
+        log('discovered UPnP gateway %s %s', service.location, service.uniqueServiceName)
         yield service
       }
     }
   } catch (err) {
-    log.error('error during service discovery - %e', err)
+    if (options?.signal?.aborted !== true) {
+      log.error('error during service discovery - %e', err)
+    }
   } finally {
     await discovery?.stop()
   }
