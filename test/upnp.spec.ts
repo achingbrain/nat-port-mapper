@@ -1,10 +1,10 @@
 import { expect } from 'aegir/chai'
 import { upnpNat } from '../src/index.js'
 import { randomPort } from './fixtures/random-port.js'
-import type { Gateway, NatAPI } from '../src/index.js'
+import type { Gateway, UPnPNAT } from '../src/index.js'
 
 describe('upnp-nat-port-mapper', () => {
-  let client: NatAPI
+  let client: UPnPNAT
   let gateways: Gateway[]
 
   beforeEach(() => {

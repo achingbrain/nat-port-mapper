@@ -2,32 +2,13 @@ import ssdp from '@achingbrain/ssdp'
 import { logger } from '@libp2p/logger'
 import merge from 'it-merge'
 import { UPNP2_ST, UPNP_ST } from './constants.js'
-import { fetchXML } from './fetch.js'
 import type { InternetGatewayDevice } from './device.js'
-import type { DiscoveryOptions } from '../index.js'
 import type { Service, SSDP } from '@achingbrain/ssdp'
+import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:discovery')
 
-const ONE_MINUTE = 60000
-const ONE_HOUR = ONE_MINUTE * 60
-
-export async function * discoverGateways (options?: DiscoveryOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
-  if (options?.gateway != null) {
-    log('using overridden gateway address %s', options.gateway)
-    const descriptor = await fetchXML(new URL(options.gateway), options)
-
-    yield {
-      location: new URL(options.gateway),
-      details: descriptor,
-      expires: Date.now() + ONE_HOUR,
-      serviceType: descriptor.device.deviceType,
-      uniqueServiceName: descriptor.device.UDN
-    }
-
-    return
-  }
-
+export async function * discoverGateways (options?: AbortOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
   let discovery: SSDP | undefined
 
   try {

@@ -1,10 +1,11 @@
 import { expect } from 'aegir/chai'
+import { gateway4sync } from 'default-gateway'
 import { pmpNat } from '../src/index.js'
 import { randomPort } from './fixtures/random-port.js'
-import type { Gateway, NatAPI } from '../src/index.js'
+import type { Gateway, PMPNAT } from '../src/index.js'
 
 describe('pmp-nat-port-mapper', () => {
-  let client: NatAPI
+  let client: PMPNAT
   let gateways: Gateway[]
 
   beforeEach(() => {
@@ -33,19 +34,18 @@ describe('pmp-nat-port-mapper', () => {
 
     const port = randomPort()
 
-    for await (const gateway of client.findGateways()) {
-      const mapped = await gateway.map(port)
+    const gateway = await client.getGateway(gateway4sync().gateway)
+    const mapped = await gateway.map(port)
 
-      expect(mapped).to.be.a('number')
+    expect(mapped).to.be.a('number')
 
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve()
-        }, 30000)
-      })
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve()
+      }, 30000)
+    })
 
-      await gateway.unmap(port)
-    }
+    await gateway.unmap(port)
   })
 
   it('should discover an external ip address', async () => {
@@ -53,12 +53,11 @@ describe('pmp-nat-port-mapper', () => {
       return // CI environments don't have NAT-PMP routers!
     }
 
-    for await (const gateway of client.findGateways()) {
-      const ip = await gateway.externalIp({
-        signal: AbortSignal.timeout(5000)
-      })
+    const gateway = await client.getGateway(gateway4sync().gateway)
+    const ip = await gateway.externalIp({
+      signal: AbortSignal.timeout(5000)
+    })
 
-      expect(ip).to.be.ok()
-    }
+    expect(ip).to.be.ok()
   })
 })

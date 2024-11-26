@@ -4,9 +4,9 @@ import { logger } from '@libp2p/logger'
 import errCode from 'err-code'
 import defer, { type DeferredPromise } from 'p-defer'
 import { raceSignal } from 'race-signal'
-import { DEFAULT_PORT_MAPPING_TTL } from '../upnp/constants.js'
+import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_BEFORE_EXPIRY, DEFAULT_REFRESH_TIMEOUT } from '../upnp/constants.js'
 import { findLocalAddress } from '../upnp/utils.js'
-import type { Gateway, MapPortOptions, NatAPIOptions } from '../index.js'
+import type { Gateway, MapPortOptions, GlobalMapPortOptions } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
@@ -50,9 +50,10 @@ export class PMPGateway extends EventEmitter implements Gateway {
   private req: any
   private reqActive: boolean
   private readonly gateway: string
-  private readonly options: NatAPIOptions
+  private readonly options: GlobalMapPortOptions
+  private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
 
-  constructor (gateway: string, options: NatAPIOptions = {}) {
+  constructor (gateway: string, options: GlobalMapPortOptions = {}) {
     super()
 
     this.queue = []
@@ -63,6 +64,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.gateway = gateway
     this.id = this.gateway
     this.options = options
+    this.refreshIntervals = new Map()
 
     // Create socket
     this.socket = createSocket({ type: 'udp4', reuseAddr: true })
@@ -89,7 +91,10 @@ export class PMPGateway extends EventEmitter implements Gateway {
       localAddress: opts?.localAddress ?? findLocalAddress(),
       protocol: opts?.protocol ?? 'tcp',
       description: opts?.description ?? this.options.description ?? '@achingbrain/nat-port-mapper',
-      ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PORT_MAPPING_TTL
+      ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PORT_MAPPING_TTL,
+      autoRefresh: opts?.autoRefresh ?? this.options.autoRefresh ?? true,
+      refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT,
+      refreshBeforeExpiry: opts?.refreshBeforeExpiry ?? this.options.refreshBeforeExpiry ?? DEFAULT_REFRESH_BEFORE_EXPIRY
     }
 
     log('Client#portMapping()')
@@ -109,14 +114,29 @@ export class PMPGateway extends EventEmitter implements Gateway {
 
     this.request(opcode, deferred, localPort, options)
 
-    await raceSignal(deferred.promise, opts?.signal)
+    const result = await raceSignal(deferred.promise, opts?.signal)
 
-    const result = await deferred.promise
+    if (options.autoRefresh) {
+      const refresh = ((localPort: number, opts: MapPortOptions = {}): void => {
+        this.map(localPort, {
+          ...opts,
+          signal: AbortSignal.timeout(options.refreshTimeout)
+        })
+          .catch(err => {
+            log.error('could not refresh port mapping - %e', err)
+          })
+      }).bind(this, localPort, {
+        ...options,
+        signal: undefined
+      })
+
+      this.refreshIntervals.set(localPort, setTimeout(refresh, options.ttl - options.refreshBeforeExpiry))
+    }
 
     return result.public
   }
 
-  async unmap (localPort: number, opts: MapPortOptions): Promise<void> {
+  async unmap (localPort: number, opts?: MapPortOptions): Promise<void> {
     log('Client#portUnmapping()')
 
     await this.map(localPort, {
@@ -134,7 +154,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
 
     this.request(OP_EXTERNAL_IP, deferred)
 
-    return deferred.promise
+    return raceSignal(deferred.promise, options?.signal)
   }
 
   async stop (options?: AbortOptions): Promise<void> {
@@ -149,6 +169,13 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.listening = false
     this.req = null
     this.reqActive = false
+
+    await Promise.all([...this.refreshIntervals.entries()].map(async ([port, timeout]) => {
+      clearTimeout(timeout)
+      await this.unmap(port, options)
+    }))
+
+    this.refreshIntervals.clear()
   }
 
   /**

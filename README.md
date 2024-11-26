@@ -22,29 +22,27 @@ repo and examine the changes made.
 
 -->
 
-## Example
+Enable NAT traversal by mapping public ports to ports on your computer using
+either [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play) or
+[NAT-PMP](https://en.wikipedia.org/wiki/NAT_Port_Mapping_Protocol).
 
-```js
+## Example - UPnP NAT
+
+```TypeScript
 import { upnpNat } from '@achingbrain/nat-port-mapper'
 
-const client = await upnpNat({
-  // all fields are optional
-  ttl: number // how long mappings should live for in seconds - min 20 minutes, default 2 hours
-  description: string // default description to pass to the router for a mapped port
-  gateway: string // override the router address, will be auto-detected if not set
-  keepAlive: boolean // if true, refresh the mapping ten minutes before the ttl is reached, default true
-})
+const client = upnpNat()
 
 for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10000) })) {
   // Map public port 1000 to private port 1000 with TCP
   await gateway.map(1000, {
-    protocol: 'TCP'
+    protocol: 'tcp'
   })
 
   // Map public port 2000 to private port 3000 with UDP
   await gateway.map(3000, {
     publicPort: 2000,
-    protocol: 'UDP'
+    protocol: 'udp'
   })
 
   // Unmap previously mapped private port 1000
@@ -53,12 +51,44 @@ for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10
   // Get external IP
   const externalIp = await gateway.externalIp()
 
-  console.log('External IP:', ip)
+  console.log('External IP:', externalIp)
 
   // Unmap all mapped ports and cancel any in-flight network operations
-  await client.stop()
+  await gateway.stop()
 }
+```
 
+## Example - NAT-PMP
+
+```TypeScript
+import { pmpNat } from '@achingbrain/nat-port-mapper'
+import { gateway4sync } from 'default-gateway'
+
+const client = pmpNat()
+
+const gateway = await client.getGateway(gateway4sync().gateway)
+
+// Map public port 1000 to private port 1000 with TCP
+await gateway.map(1000, {
+  protocol: 'tcp'
+})
+
+// Map public port 2000 to private port 3000 with UDP
+await gateway.map(3000, {
+  publicPort: 2000,
+  protocol: 'udp'
+})
+
+// Unmap previously mapped private port 1000
+await gateway.unmap(1000)
+
+// Get external IP
+const externalIp = await gateway.externalIp()
+
+console.log('External IP:', externalIp)
+
+// Unmap all mapped ports and cancel any in-flight network operations
+await gateway.stop()
 ```
 
 ## Credits

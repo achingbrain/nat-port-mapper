@@ -2,11 +2,11 @@ import { logger } from '@libp2p/logger'
 import { UPnPGateway } from './upnp-gateway.js'
 import { findNamespacedKey } from './utils.js'
 import type { Device } from './device.js'
-import type { NatAPIOptions, Protocol } from '../index.js'
+import type { GlobalMapPortOptions, Protocol } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 
 export class UPnP2Gateway extends UPnPGateway {
-  constructor (gateway: Device, options: NatAPIOptions = {}) {
+  constructor (gateway: Device, options: GlobalMapPortOptions = {}) {
     super(gateway, logger('nat-port-mapper:upnp:upnp2gateway'), options)
   }
 

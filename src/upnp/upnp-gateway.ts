@@ -1,7 +1,7 @@
-import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_OFFSET, DEFAULT_REFRESH_TIMEOUT } from './constants.js'
+import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_BEFORE_EXPIRY, DEFAULT_REFRESH_TIMEOUT } from './constants.js'
 import { findLocalAddress, findNamespacedKey } from './utils.js'
 import type { Device } from './device.js'
-import type { Gateway, MapPortOptions, NatAPIOptions, Protocol } from '../index.js'
+import type { Gateway, MapPortOptions, GlobalMapPortOptions, Protocol } from '../index.js'
 import type { Logger } from '@libp2p/logger'
 import type { AbortOptions } from 'abort-error'
 
@@ -10,9 +10,9 @@ export abstract class UPnPGateway implements Gateway {
   protected readonly gateway: Device
   protected readonly log: Logger
   private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
-  private readonly options: NatAPIOptions
+  private readonly options: GlobalMapPortOptions
 
-  constructor (gateway: Device, log: Logger, options: NatAPIOptions = {}) {
+  constructor (gateway: Device, log: Logger, options: GlobalMapPortOptions = {}) {
     this.gateway = gateway
     this.log = log
     this.refreshIntervals = new Map()
@@ -43,7 +43,7 @@ export abstract class UPnPGateway implements Gateway {
       const refresh = ((localPort: number, options: MapPortOptions = {}): void => {
         this.map(localPort, {
           ...options,
-          signal: AbortSignal.timeout(options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT)
+          signal: AbortSignal.timeout(options.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT)
         })
           .catch(err => {
             this.log.error('could not refresh port mapping - %e', err)
@@ -53,7 +53,7 @@ export abstract class UPnPGateway implements Gateway {
         signal: undefined
       })
 
-      this.refreshIntervals.set(localPort, setTimeout(refresh, ttl - (options.refreshOffset ?? DEFAULT_REFRESH_OFFSET)))
+      this.refreshIntervals.set(localPort, setTimeout(refresh, ttl - (options.refreshBeforeExpiry ?? this.options.refreshBeforeExpiry ?? DEFAULT_REFRESH_BEFORE_EXPIRY)))
     }
 
     return mappedPort
