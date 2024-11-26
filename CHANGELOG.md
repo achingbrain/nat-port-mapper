@@ -1,3 +1,9 @@
+## [3.0.2](https://github.com/achingbrain/nat-port-mapper/compare/v3.0.1...v3.0.2) (2024-11-26)
+
+### Bug Fixes
+
+* detect internet gateway device from service type ([#83](https://github.com/achingbrain/nat-port-mapper/issues/83)) ([11cddc6](https://github.com/achingbrain/nat-port-mapper/commit/11cddc6c34e9ce1beeaf95184c7511b710e2fa64))
+
 ## [3.0.1](https://github.com/achingbrain/nat-port-mapper/compare/v3.0.0...v3.0.1) (2024-11-26)
 
 ### Bug Fixes
