@@ -1,146 +1,55 @@
-import { setMaxListeners } from 'node:events'
 import { logger } from '@libp2p/logger'
-import { anySignal } from 'any-signal'
+import { ONE_HOUR, UPNP2_ST, UPNP_ST } from './constants.js'
 import { Device } from './device.js'
-import type { DiscoverGateway } from '../discovery/index.js'
-import type { Client, InternalMapOptions } from '../types.js'
+import { discoverGateways } from './discovery.js'
+import { fetchXML } from './fetch.js'
+import { UPnP1Gateway } from './upnp1-gateway.js'
+import { UPnP2Gateway } from './upnp2-gateway.js'
+import type { Gateway, GlobalMapPortOptions } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:upnp')
 
-export class UPNPClient implements Client {
-  private closed: boolean
-  private readonly discoverGateway: () => DiscoverGateway
-  private readonly shutdownController: AbortController
+export class UPnPClient {
+  private readonly options: GlobalMapPortOptions
 
-  static createClient (discoverGateway: () => DiscoverGateway): UPNPClient {
-    return new UPNPClient(discoverGateway)
+  constructor (options: GlobalMapPortOptions = {}) {
+    this.options = options
   }
 
-  constructor (discoverGateway: () => DiscoverGateway) {
-    this.discoverGateway = discoverGateway
-    this.closed = false
+  async * findGateways (options?: AbortOptions): AsyncGenerator<Gateway, void, unknown> {
+    log('find uPnP gateways')
 
-    // used to terminate network operations on shutdown
-    this.shutdownController = new AbortController()
-    setMaxListeners(Infinity, this.shutdownController.signal)
-  }
+    for await (const service of discoverGateways(options)) {
+      const device = new Device(service)
 
-  async map (localPort: number, options: InternalMapOptions): Promise<number> {
-    if (this.closed) {
-      throw new Error('client is closed')
-    }
-
-    const signal = anySignal([this.shutdownController.signal, options.signal])
-    setMaxListeners(Infinity, signal)
-
-    const gateway = await this.findGateway()
-    const description = options.description ?? 'node:nat:upnp'
-    const protocol = options.protocol === 'TCP' ? options.protocol : 'UDP'
-    let ttl = 60 * 30
-
-    if (typeof options.ttl === 'number') {
-      ttl = options.ttl
-    }
-
-    if (typeof options.ttl === 'string' && !isNaN(options.ttl)) {
-      ttl = Number(options.ttl)
-    }
-
-    log('mapping local port %d to public port %d', localPort, options.publicPort)
-
-    const response = await gateway.run('AddAnyPortMapping', [
-      ['NewRemoteHost', options.publicHost ?? ''],
-      ['NewExternalPort', options.publicPort],
-      ['NewProtocol', protocol],
-      ['NewInternalPort', localPort],
-      ['NewInternalClient', options.localAddress],
-      ['NewEnabled', 1],
-      ['NewPortMappingDescription', description],
-      ['NewLeaseDuration', ttl]
-    ], signal)
-    const key = this.findNamespacedKey('AddAnyPortMappingResponse', response)
-
-    return Number(response[key].NewReservedPort)
-  }
-
-  async unmap (localPort: number, options: InternalMapOptions): Promise<void> {
-    if (this.closed) {
-      throw new Error('client is closed')
-    }
-
-    const signal = anySignal([this.shutdownController.signal, options.signal])
-    setMaxListeners(Infinity, signal)
-
-    const gateway = await this.findGateway({
-      ...options,
-      signal
-    })
-
-    await gateway.run('DeletePortMapping', [
-      ['NewRemoteHost', options.publicHost],
-      ['NewExternalPort', options.publicPort],
-      ['NewProtocol', options.protocol]
-    ], signal)
-  }
-
-  async externalIp (options?: AbortOptions): Promise<string> {
-    if (this.closed) {
-      throw new Error('client is closed')
-    }
-
-    log('discover external IP address')
-
-    const gateway = await this.findGateway(options)
-
-    const response = await gateway.run('GetExternalIPAddress', [], this.shutdownController.signal)
-    const key = this.findNamespacedKey('GetExternalIPAddressResponse', response)
-
-    log('discovered external IP address %s', response[key].NewExternalIPAddress)
-    return response[key].NewExternalIPAddress
-  }
-
-  private findNamespacedKey (key: string, data: any): string {
-    let ns = null
-    Object.keys(data).some((k) => {
-      if (new RegExp(`!/:${key}$/`).test(k)) {
-        return false
+      if (service.details.device.deviceType === UPNP_ST) {
+        yield new UPnP1Gateway(device, this.options)
+      } else if (service.details.device.deviceType === UPNP2_ST) {
+        yield new UPnP2Gateway(device, this.options)
       }
-
-      ns = k
-      return true
-    })
-
-    if (ns == null) {
-      throw new Error('Incorrect response')
     }
-
-    return ns
   }
 
-  private async findGateway (options?: AbortOptions): Promise<Device> {
-    if (this.closed) {
-      throw new Error('client is closed')
+  async getGateway (location: URL, options: AbortOptions = {}): Promise<Gateway> {
+    const descriptor = await fetchXML(location, options)
+
+    const service = {
+      location,
+      details: descriptor,
+      expires: Date.now() + ONE_HOUR,
+      serviceType: descriptor.device.deviceType,
+      uniqueServiceName: descriptor.device.UDN
     }
 
-    const signal = anySignal([this.shutdownController.signal, options?.signal])
-    setMaxListeners(Infinity, signal)
+    const device = new Device(service)
 
-    const discover = this.discoverGateway()
-    const service = await discover({
-      ...options,
-      signal
-    })
-
-    if (service != null) {
-      return new Device(service)
+    if (service.details.device.deviceType === UPNP_ST) {
+      return new UPnP1Gateway(device, this.options)
+    } else if (service.details.device.deviceType === UPNP2_ST) {
+      return new UPnP2Gateway(device, this.options)
     }
 
-    throw new Error('could not find gateway')
-  }
-
-  async close (): Promise<void> {
-    this.closed = true
-    this.shutdownController.abort()
+    throw new Error(`Device type was not UPnP1 or UPnP2, it was "${service.details.device.deviceType}"`)
   }
 }

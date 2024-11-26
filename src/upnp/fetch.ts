@@ -1,14 +1,15 @@
 import http from 'http'
 import https from 'https'
 import { logger } from '@libp2p/logger'
+import xml2js from 'xml2js'
 
 const log = logger('nat-port-mapper:upnp:fetch')
 
 export interface RequestInit {
-  method: 'POST' | 'GET'
-  headers: Record<string, string>
-  body: Buffer | string
-  signal: AbortSignal
+  method?: 'POST' | 'GET'
+  headers?: Record<string, string>
+  body?: Buffer | string
+  signal?: AbortSignal
 }
 
 function initRequest (url: URL, init: RequestInit): http.ClientRequest {
@@ -30,8 +31,14 @@ function initRequest (url: URL, init: RequestInit): http.ClientRequest {
   }
 }
 
-export async function fetchXML (url: URL, init: RequestInit): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+export async function fetchXML <Response = any> (url: URL, init: RequestInit): Promise<Response> {
+  log.trace('-> %s %s', init.method ?? 'GET', url)
+
+  if (init.body != null) {
+    log.trace('->', init.body)
+  }
+
+  const responseText = await new Promise<string>((resolve, reject) => {
     const request = initRequest(url, init)
 
     if (init.body != null) {
@@ -75,4 +82,14 @@ export async function fetchXML (url: URL, init: RequestInit): Promise<string> {
       })
     })
   })
+
+  const parser = new xml2js.Parser({
+    explicitRoot: false,
+    explicitArray: false,
+    attrkey: '@'
+  })
+
+  log.trace('<-', responseText)
+
+  return parser.parseStringPromise(responseText)
 }
