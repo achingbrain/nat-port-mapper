@@ -1,3 +1,9 @@
+## [3.0.1](https://github.com/achingbrain/nat-port-mapper/compare/v3.0.0...v3.0.1) (2024-11-26)
+
+### Bug Fixes
+
+* close socket after pmp unmap ([#82](https://github.com/achingbrain/nat-port-mapper/issues/82)) ([52f87ad](https://github.com/achingbrain/nat-port-mapper/commit/52f87ad66470ffbb2cbae3cac072439b0c279e46)), closes [#65](https://github.com/achingbrain/nat-port-mapper/issues/65)
+
 ## [3.0.0](https://github.com/achingbrain/nat-port-mapper/compare/v2.0.10...v3.0.0) (2024-11-26)
 
 ### ⚠ BREAKING CHANGES
