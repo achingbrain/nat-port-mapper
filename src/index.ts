@@ -14,27 +14,30 @@
  *   keepAlive: boolean // if true, refresh the mapping ten minutes before the ttl is reached, default true
  * })
  *
- * // Map public port 1000 to private port 1000 with TCP
- * await client.map(1000, {
- *   protocol: 'TCP'
- * })
+ * for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10000) })) {
+ *   // Map public port 1000 to private port 1000 with TCP
+ *   await gateway.map(1000, {
+ *     protocol: 'TCP'
+ *   })
  *
- * // Map public port 2000 to private port 3000 with UDP
- * await client.map(3000, {
- *   publicPort: 2000,
- *   protocol: 'UDP'
- * })
+ *   // Map public port 2000 to private port 3000 with UDP
+ *   await gateway.map(3000, {
+ *     publicPort: 2000,
+ *     protocol: 'UDP'
+ *   })
  *
- * // Unmap previously mapped private port 1000
- * await client.unmap(1000)
+ *   // Unmap previously mapped private port 1000
+ *   await gateway.unmap(1000)
  *
- * // Get external IP
- * const externalIp = await client.externalIp()
+ *   // Get external IP
+ *   const externalIp = await gateway.externalIp()
  *
- * console.log('External IP:', ip)
+ *   console.log('External IP:', ip)
  *
- * // Unmap all mapped ports
- * await client.close()
+ *   // Unmap all mapped ports and cancel any in-flight network operations
+ *   await client.stop()
+ * }
+ *
  * ```
  *
  * ## Credits
@@ -49,19 +52,17 @@
  */
 
 import { gateway4sync } from 'default-gateway'
-import { discoverGateway } from './discovery/index.js'
-import { NatAPI as NatAPIClass } from './nat-api.js'
 import { PMPClient } from './pmp/index.js'
 import { UPNPClient } from './upnp/index.js'
 import type { AbortOptions } from 'abort-error'
 
-export type Protocol = 'TCP' | 'UDP'
+export type Protocol = 'tcp' | 'udp'
 
 export interface NatAPIOptions {
   /**
-   * TTL in seconds, minimum one minute
+   * TTL for port mappings in ms
    *
-   * @default 7200
+   * @default 720_000
    */
   ttl?: number
 
@@ -73,17 +74,11 @@ export interface NatAPIOptions {
   description?: string
 
   /**
-   * If a gateway is known, pass it here, otherwise one will be discovered on
-   * the network
-   */
-  gateway?: string
-
-  /**
    * If true, any mapped ports will be refreshed when their lease expires
    *
    * @default true
    */
-  keepAlive?: boolean
+  autoRefresh?: boolean
 }
 
 export interface MapPortOptions extends AbortOptions {
@@ -122,9 +117,9 @@ export interface MapPortOptions extends AbortOptions {
   description?: string
 
   /**
-   * How long to map the port for in seconds
+   * How long to map the port for in ms
    *
-   * @default 7200
+   * @default 720_000
    */
   ttl?: number
 
@@ -133,13 +128,36 @@ export interface MapPortOptions extends AbortOptions {
    * used, otherwise it will be auto-detected
    */
   gateway?: string
+
+  /**
+   * Whether to automatically renew the port mapping after it expires
+   *
+   * @default true
+   */
+  autoRefresh?: boolean
+
+  /**
+   * How long to wait while trying to refresh a port mapping in ms
+   *
+   * @default 10_000
+   */
+  refreshTimeout?: number
+
+  /**
+   * How long before expiry to remap the port mapping in ms
+   *
+   * @default 60_000
+   */
+  refreshOffset?: number
 }
 
-export interface NatAPI {
+export interface Gateway {
+  id: string
+
   /**
    * Stop all network transactions and unmap any mapped ports
    */
-  close(options?: AbortOptions): Promise<void>
+  stop(options?: AbortOptions): Promise<void>
 
   /**
    * Map a local port to one on the external network interface
@@ -160,17 +178,28 @@ export interface NatAPI {
   externalIp(options?: AbortOptions): Promise<string>
 }
 
-export function upnpNat (options: Partial<NatAPIOptions> = {}): NatAPI {
-  const client = UPNPClient.createClient(discoverGateway())
-
-  return new NatAPIClass(client, options)
+export interface DiscoveryOptions extends AbortOptions {
+  /**
+   * Do not search the network for a gateway, use this instead. The value should
+   * be a fully qualified URL to a device descriptor XML file, e.g.
+   * `http://192.168.1.1:4558/rootDesc.xml`
+   */
+  gateway?: string
 }
 
-export function pmpNat (options: Partial<NatAPIOptions> = {}): NatAPI {
-  const client = PMPClient.createClient(discoverGateway())
+export interface NatAPI {
+  /**
+   * Search the local network for gateways - when enough gateways have been
+   * found, either break out of the `for await..of` loop or abort a passed
+   * `AbortSignal`.
+   */
+  findGateways (options?: DiscoveryOptions): AsyncGenerator<Gateway, void, unknown>
+}
 
-  return new NatAPIClass(client, {
-    ...options,
-    gateway: gateway4sync().gateway
-  })
+export function upnpNat (options: NatAPIOptions = {}): NatAPI {
+  return UPNPClient.createClient(options)
+}
+
+export function pmpNat (gateway: string = gateway4sync().gateway, options: NatAPIOptions = {}): NatAPI {
+  return PMPClient.createClient(gateway, options)
 }

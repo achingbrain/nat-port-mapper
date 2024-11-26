@@ -35,27 +35,30 @@ const client = await upnpNat({
   keepAlive: boolean // if true, refresh the mapping ten minutes before the ttl is reached, default true
 })
 
-// Map public port 1000 to private port 1000 with TCP
-await client.map(1000, {
-  protocol: 'TCP'
-})
+for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10000) })) {
+  // Map public port 1000 to private port 1000 with TCP
+  await gateway.map(1000, {
+    protocol: 'TCP'
+  })
 
-// Map public port 2000 to private port 3000 with UDP
-await client.map(3000, {
-  publicPort: 2000,
-  protocol: 'UDP'
-})
+  // Map public port 2000 to private port 3000 with UDP
+  await gateway.map(3000, {
+    publicPort: 2000,
+    protocol: 'UDP'
+  })
 
-// Unmap previously mapped private port 1000
-await client.unmap(1000)
+  // Unmap previously mapped private port 1000
+  await gateway.unmap(1000)
 
-// Get external IP
-const externalIp = await client.externalIp()
+  // Get external IP
+  const externalIp = await gateway.externalIp()
 
-console.log('External IP:', ip)
+  console.log('External IP:', ip)
 
-// Unmap all mapped ports
-await client.close()
+  // Unmap all mapped ports and cancel any in-flight network operations
+  await client.stop()
+}
+
 ```
 
 ## Credits
@@ -73,6 +76,10 @@ Based on [alxhotel/nat-api](https://github.com/alxhotel/nat-api)
 ```console
 $ npm i @achingbrain/nat-port-mapper
 ```
+
+# API Docs
+
+- <https://achingbrain.github.io/nat-port-mapper>
 
 # License
 

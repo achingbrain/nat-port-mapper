@@ -1,7 +1,8 @@
+import { setMaxListeners } from 'node:events'
 import { logger } from '@libp2p/logger'
-import xml2js from 'xml2js'
 import { fetchXML } from './fetch.js'
 import type { Service } from '@achingbrain/ssdp'
+import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:upnp:device')
 
@@ -10,6 +11,7 @@ export interface InternetGatewayDevice {
 }
 
 interface GatewayDevice {
+  deviceType: string
   serviceList: {
     service: GatewayService[]
   }
@@ -38,8 +40,9 @@ interface ServiceInfo {
 }
 
 export class Device {
-  private readonly service: Service<InternetGatewayDevice>
+  public readonly service: Service<InternetGatewayDevice>
   private readonly services: string[]
+  private readonly shutdownController: AbortController
 
   constructor (service: Service<InternetGatewayDevice>) {
     this.service = service
@@ -48,9 +51,13 @@ export class Device {
       'urn:schemas-upnp-org:service:WANIPConnection:2',
       'urn:schemas-upnp-org:service:WANPPPConnection:1'
     ]
+
+    // used to terminate network operations on shutdown
+    this.shutdownController = new AbortController()
+    setMaxListeners(Infinity, this.shutdownController.signal)
   }
 
-  async run (action: string, args: Array<[string, string | number]>, signal: AbortSignal): Promise<any> {
+  async run (action: string, args: Array<[string, string | number]>, options?: AbortOptions): Promise<any> {
     const info = this.getService(this.services)
 
     const requestBody = `<?xml version="1.0"?>
@@ -65,25 +72,16 @@ export class Device {
     log.trace('-> POST', info.controlURL)
     log.trace('->', requestBody)
 
-    const text = await fetchXML(new URL(info.controlURL), {
+    const responseBody = await fetchXML(new URL(info.controlURL), {
+      ...options,
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml',
         'Content-Length': requestBody.length.toString(),
         SOAPAction: JSON.stringify(info.service + '#' + action)
       },
-      body: requestBody,
-      signal
+      body: requestBody
     })
-
-    log.trace('<-', text)
-
-    const parser = new xml2js.Parser({
-      explicitRoot: false,
-      explicitArray: false,
-      attrkey: '@'
-    })
-    const responseBody = await parser.parseStringPromise(text)
 
     const soapns = this.getNamespace(
       responseBody,
@@ -181,5 +179,9 @@ export class Device {
     }
 
     return ns != null ? `${ns}:` : ''
+  }
+
+  close (): void {
+    this.shutdownController.abort()
   }
 }
