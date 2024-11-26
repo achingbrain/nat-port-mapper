@@ -83,7 +83,7 @@ import { PMPGateway } from './pmp/gateway.js'
 import { UPnPClient } from './upnp/index.js'
 import type { AbortOptions } from 'abort-error'
 
-export type Protocol = 'tcp' | 'udp'
+export type Protocol = 'tcp' | 'TCP' | 'udp' | 'UDP'
 
 export interface GlobalMapPortOptions {
   /**
@@ -146,7 +146,7 @@ export interface MapPortOptions extends GlobalMapPortOptions, AbortOptions {
   /**
    * The protocol the port uses
    *
-   * @default 'TCP'
+   * @default 'tcp'
    */
   protocol?: Protocol
 }
