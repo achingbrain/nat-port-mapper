@@ -9,7 +9,7 @@ describe('pmp-nat-port-mapper', () => {
 
   beforeEach(() => {
     if (process.env.CI != null) {
-      return // CI environments don't have uPNP routers!
+      return // CI environments don't have NAT-PMP routers!
     }
 
     gateways = []
@@ -17,6 +17,10 @@ describe('pmp-nat-port-mapper', () => {
   })
 
   afterEach(async () => {
+    if (process.env.CI != null) {
+      return // CI environments don't have NAT-PMP routers!
+    }
+
     await Promise.all(
       gateways.map(async gateway => gateway.stop())
     )
@@ -24,7 +28,7 @@ describe('pmp-nat-port-mapper', () => {
 
   it('should map a port', async () => {
     if (process.env.CI != null) {
-      return // CI environments don't have uPNP routers!
+      return // CI environments don't have NAT-PMP routers!
     }
 
     const port = randomPort()
@@ -46,7 +50,7 @@ describe('pmp-nat-port-mapper', () => {
 
   it('should discover an external ip address', async () => {
     if (process.env.CI != null) {
-      return // CI environments don't have uPNP routers!
+      return // CI environments don't have NAT-PMP routers!
     }
 
     for await (const gateway of client.findGateways()) {

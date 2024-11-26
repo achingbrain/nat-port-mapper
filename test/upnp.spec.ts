@@ -17,6 +17,10 @@ describe('upnp-nat-port-mapper', () => {
   })
 
   afterEach(async () => {
+    if (process.env.CI != null) {
+      return // CI environments don't have uPNP routers!
+    }
+
     await Promise.all(
       gateways.map(async gateway => gateway.stop())
     )
