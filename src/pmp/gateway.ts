@@ -4,6 +4,8 @@ import { logger } from '@libp2p/logger'
 import errCode from 'err-code'
 import defer, { type DeferredPromise } from 'p-defer'
 import { raceSignal } from 'race-signal'
+import { DEFAULT_PORT_MAPPING_TTL } from '../upnp/constants.js'
+import { findLocalAddress } from '../upnp/utils.js'
 import type { Gateway, MapPortOptions, NatAPIOptions } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
@@ -58,7 +60,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.listening = false
     this.req = null
     this.reqActive = false
-    this.gateway = new URL(gateway).host
+    this.gateway = gateway
     this.id = this.gateway
     this.options = options
 
@@ -80,10 +82,19 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.socket.bind(CLIENT_PORT)
   }
 
-  async map (localPort: number, opts: MapPortOptions): Promise<number> {
+  async map (localPort: number, opts?: MapPortOptions): Promise<number> {
+    const options = {
+      publicPort: opts?.publicPort ?? localPort,
+      publicHost: opts?.publicHost ?? '',
+      localAddress: opts?.localAddress ?? findLocalAddress(),
+      protocol: opts?.protocol ?? 'tcp',
+      description: opts?.description ?? this.options.description ?? '@achingbrain/nat-port-mapper',
+      ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PORT_MAPPING_TTL
+    }
+
     log('Client#portMapping()')
     let opcode: typeof OP_MAP_TCP | typeof OP_MAP_UDP
-    switch (String(opts.protocol ?? 'tcp').toLowerCase()) {
+    switch (options.protocol.toLowerCase()) {
       case 'tcp':
         opcode = OP_MAP_TCP
         break
@@ -96,9 +107,9 @@ export class PMPGateway extends EventEmitter implements Gateway {
 
     const deferred = defer<any>()
 
-    this.request(opcode, deferred, localPort, opts)
+    this.request(opcode, deferred, localPort, options)
 
-    await raceSignal(deferred.promise, opts.signal)
+    await raceSignal(deferred.promise, opts?.signal)
 
     const result = await deferred.promise
 

@@ -81,6 +81,14 @@ export interface NatAPIOptions {
   autoRefresh?: boolean
 }
 
+export interface NatPMPOptions extends NatAPIOptions {
+  /**
+   * A gateway to map the port on, if omitted the preconfigured value will be
+   * used, otherwise it will be auto-detected
+   */
+  gateway?: string
+}
+
 export interface MapPortOptions extends AbortOptions {
   /**
    * The external port to map. If omitted a free port will be chosen.
@@ -122,12 +130,6 @@ export interface MapPortOptions extends AbortOptions {
    * @default 720_000
    */
   ttl?: number
-
-  /**
-   * A gateway to map the port on, if omitted the preconfigured value will be
-   * used, otherwise it will be auto-detected
-   */
-  gateway?: string
 
   /**
    * Whether to automatically renew the port mapping after it expires
@@ -196,10 +198,18 @@ export interface NatAPI {
   findGateways (options?: DiscoveryOptions): AsyncGenerator<Gateway, void, unknown>
 }
 
+/**
+ * Create a UPnP port mapper
+ */
 export function upnpNat (options: NatAPIOptions = {}): NatAPI {
   return UPNPClient.createClient(options)
 }
 
-export function pmpNat (gateway: string = gateway4sync().gateway, options: NatAPIOptions = {}): NatAPI {
+/**
+ * Create a NAT-PMP port mapper
+ */
+export function pmpNat (options: NatPMPOptions = {}): NatAPI {
+  const gateway = options.gateway ?? gateway4sync().gateway
+
   return PMPClient.createClient(gateway, options)
 }

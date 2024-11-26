@@ -37,7 +37,7 @@ describe('upnp-nat-port-mapper', () => {
       await new Promise<void>((resolve) => {
         setTimeout(() => {
           resolve()
-        }, 5000)
+        }, 30000)
       })
 
       await gateway.unmap(port)

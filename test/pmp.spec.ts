@@ -3,7 +3,7 @@ import { pmpNat } from '../src/index.js'
 import { randomPort } from './fixtures/random-port.js'
 import type { Gateway, NatAPI } from '../src/index.js'
 
-describe.skip('pmp-nat-port-mapper', () => {
+describe('pmp-nat-port-mapper', () => {
   let client: NatAPI
   let gateways: Gateway[]
 
@@ -37,7 +37,7 @@ describe.skip('pmp-nat-port-mapper', () => {
       await new Promise<void>((resolve) => {
         setTimeout(() => {
           resolve()
-        }, 5000)
+        }, 30000)
       })
 
       await gateway.unmap(port)
