@@ -1,3 +1,13 @@
+## [4.0.0](https://github.com/achingbrain/nat-port-mapper/compare/v3.0.2...v4.0.0) (2024-11-29)
+
+### ⚠ BREAKING CHANGES
+
+* map now requires the internal host to map ports for
+
+### Features
+
+* specify external hosts for mapping ([#84](https://github.com/achingbrain/nat-port-mapper/issues/84)) ([579ac48](https://github.com/achingbrain/nat-port-mapper/commit/579ac483aa4f31fe5c6ed37ce03ba68f6acf3e6d))
+
 ## [3.0.2](https://github.com/achingbrain/nat-port-mapper/compare/v3.0.1...v3.0.2) (2024-11-26)
 
 ### Bug Fixes
