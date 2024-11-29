@@ -17,11 +17,18 @@ describe('pmp-nat-port-mapper', () => {
     }
 
     const port = randomPort()
+    const mapped = []
 
     gateway = pmpNat(gateway4sync().gateway)
-    const mapped = await gateway.map(port)
+    for await (const mapping of gateway.mapAll(port)) {
+      expect(mapping.externalHost).to.be.a('string')
+      expect(mapping.externalPort).to.be.a('number')
 
-    expect(mapped).to.be.a('number')
+      expect(mapping.internalHost).to.be.a('string')
+      expect(mapping.internalPort).to.be.a('number')
+
+      mapped.push(mapping)
+    }
 
     await new Promise<void>((resolve) => {
       setTimeout(() => {

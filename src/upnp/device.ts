@@ -1,10 +1,9 @@
 import { setMaxListeners } from 'node:events'
-import { logger } from '@libp2p/logger'
+import { NS_SOAP } from './constants.js'
 import { fetchXML } from './fetch.js'
+import { getNamespace } from './utils.js'
 import type { Service } from '@achingbrain/ssdp'
 import type { AbortOptions } from 'abort-error'
-
-const log = logger('nat-port-mapper:upnp:device')
 
 export interface InternetGatewayDevice {
   device: GatewayDevice
@@ -41,24 +40,18 @@ interface ServiceInfo {
 
 export class Device {
   public readonly service: Service<InternetGatewayDevice>
-  private readonly services: string[]
   private readonly shutdownController: AbortController
 
   constructor (service: Service<InternetGatewayDevice>) {
     this.service = service
-    this.services = [
-      'urn:schemas-upnp-org:service:WANIPConnection:1',
-      'urn:schemas-upnp-org:service:WANIPConnection:2',
-      'urn:schemas-upnp-org:service:WANPPPConnection:1'
-    ]
 
     // used to terminate network operations on shutdown
     this.shutdownController = new AbortController()
     setMaxListeners(Infinity, this.shutdownController.signal)
   }
 
-  async run (action: string, args: Array<[string, string | number]>, options?: AbortOptions): Promise<any> {
-    const info = this.getService(this.services)
+  async run (device: string, action: string, args: Array<[string, string | number]>, options?: AbortOptions): Promise<any> {
+    const info = this.getService(device)
 
     const requestBody = `<?xml version="1.0"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -68,9 +61,6 @@ export class Device {
     </u:${action}>
   </s:Body>
 </s:Envelope>`
-
-    log.trace('-> POST', info.controlURL)
-    log.trace('->', requestBody)
 
     const responseBody = await fetchXML(new URL(info.controlURL), {
       ...options,
@@ -83,19 +73,14 @@ export class Device {
       body: requestBody
     })
 
-    const soapns = this.getNamespace(
-      responseBody,
-      'http://schemas.xmlsoap.org/soap/envelope/'
-    )
+    const soapns = getNamespace(responseBody, NS_SOAP)
 
     return responseBody[soapns + 'Body']
   }
 
-  getService (types: string[]): ServiceInfo {
+  getService (type: string): ServiceInfo {
     const [service] = this.parseDescription(this.service.details).services
-      .filter(function (service) {
-        return types.includes(service.serviceType)
-      })
+      .filter(device => device.serviceType === type)
 
     // Use the first available service
     if (service?.controlURL == null || service.SCPDURL == null) {
@@ -163,22 +148,6 @@ export class Device {
       services,
       devices
     }
-  }
-
-  getNamespace (data: any, uri: string): string {
-    let ns: string | undefined
-
-    if (data['@'] != null) {
-      Object.keys(data['@']).some(function (key) {
-        if (!/^xmlns:/.test(key)) return false
-        if (data['@'][key] !== uri) return false
-
-        ns = key.replace(/^xmlns:/, '')
-        return true
-      })
-    }
-
-    return ns != null ? `${ns}:` : ''
   }
 
   close (): void {

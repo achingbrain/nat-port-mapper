@@ -1,12 +1,14 @@
 import { createSocket } from 'dgram'
 import { EventEmitter } from 'events'
+import { isIPv4 } from '@chainsafe/is-ip'
 import { logger } from '@libp2p/logger'
 import errCode from 'err-code'
 import defer, { type DeferredPromise } from 'p-defer'
 import { raceSignal } from 'race-signal'
-import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_BEFORE_EXPIRY, DEFAULT_REFRESH_TIMEOUT } from '../upnp/constants.js'
-import { findLocalAddress } from '../upnp/utils.js'
-import type { Gateway, MapPortOptions, GlobalMapPortOptions } from '../index.js'
+import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_THRESHOLD, DEFAULT_REFRESH_TIMEOUT } from '../upnp/constants.js'
+import { findLocalAddresses } from '../upnp/utils.js'
+import { isPrivateIp } from '../utils.js'
+import type { Gateway, MapPortOptions, GlobalMapPortOptions, PortMapping } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
@@ -49,7 +51,9 @@ export class PMPGateway extends EventEmitter implements Gateway {
   private listening: boolean
   private req: any
   private reqActive: boolean
-  private readonly gateway: string
+  public readonly host: string
+  public readonly port: number
+  public readonly family: 'IPv4' | 'IPv6'
   private readonly options: GlobalMapPortOptions
   private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
 
@@ -61,8 +65,10 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.listening = false
     this.req = null
     this.reqActive = false
-    this.gateway = gateway
-    this.id = this.gateway
+    this.host = gateway
+    this.port = SERVER_PORT
+    this.family = isIPv4(gateway) ? 'IPv4' : 'IPv6'
+    this.id = this.host
     this.options = options
     this.refreshIntervals = new Map()
 
@@ -84,17 +90,36 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.socket.bind(CLIENT_PORT)
   }
 
-  async map (localPort: number, opts?: MapPortOptions): Promise<number> {
+  async * mapAll (localPort: number, options: MapPortOptions = {}): AsyncGenerator<PortMapping, void, unknown> {
+    let mapped = false
+
+    for (const host of findLocalAddresses(this.family)) {
+      try {
+        const mapping = await this.map(localPort, host, options)
+        mapped = true
+
+        yield mapping
+      } catch (err) {
+        log.error('error mapping %s:%d - %e', host, localPort, err)
+      }
+    }
+
+    if (!mapped) {
+      throw new Error(`All attempts to map port ${localPort} failed`)
+    }
+  }
+
+  async map (localPort: number, localHost: string, opts?: MapPortOptions): Promise<PortMapping> {
     const options = {
-      publicPort: opts?.publicPort ?? localPort,
-      publicHost: opts?.publicHost ?? '',
-      localAddress: opts?.localAddress ?? findLocalAddress(),
+      publicPort: opts?.externalPort ?? localPort,
+      publicHost: opts?.remoteHost ?? '',
+      localAddress: localHost,
       protocol: opts?.protocol ?? 'tcp',
       description: opts?.description ?? this.options.description ?? '@achingbrain/nat-port-mapper',
       ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PORT_MAPPING_TTL,
       autoRefresh: opts?.autoRefresh ?? this.options.autoRefresh ?? true,
       refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT,
-      refreshBeforeExpiry: opts?.refreshBeforeExpiry ?? this.options.refreshBeforeExpiry ?? DEFAULT_REFRESH_BEFORE_EXPIRY
+      refreshBeforeExpiry: opts?.refreshThreshold ?? this.options.refreshThreshold ?? DEFAULT_REFRESH_THRESHOLD
     }
 
     log('Client#portMapping()')
@@ -110,7 +135,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
         throw new Error('"type" must be either "tcp" or "udp"')
     }
 
-    const deferred = defer<any>()
+    const deferred = defer<{ public: number, private: number, ttl: number, type: 'TCP' | 'UDP' }>()
 
     this.request(opcode, deferred, localPort, options)
 
@@ -118,7 +143,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
 
     if (options.autoRefresh) {
       const refresh = ((localPort: number, opts: MapPortOptions = {}): void => {
-        this.map(localPort, {
+        this.map(localPort, localHost, {
           ...opts,
           signal: AbortSignal.timeout(options.refreshTimeout)
         })
@@ -133,16 +158,21 @@ export class PMPGateway extends EventEmitter implements Gateway {
       this.refreshIntervals.set(localPort, setTimeout(refresh, options.ttl - options.refreshBeforeExpiry))
     }
 
-    return result.public
+    return {
+      externalHost: isPrivateIp(localHost) === true ? await this.externalIp(opts) : localHost,
+      externalPort: result.public,
+      internalHost: localHost,
+      internalPort: result.private,
+      protocol: result.type
+    }
   }
 
   async unmap (localPort: number, opts?: MapPortOptions): Promise<void> {
     log('Client#portUnmapping()')
 
-    await this.map(localPort, {
+    await this.map(localPort, '', {
       ...opts,
       description: '',
-      localAddress: '',
       ttl: 0
     })
   }
@@ -150,11 +180,13 @@ export class PMPGateway extends EventEmitter implements Gateway {
   async externalIp (options?: AbortOptions): Promise<string> {
     log('Client#externalIp()')
 
-    const deferred = defer<string>()
+    const deferred = defer<{ ip: number[] }>()
 
     this.request(OP_EXTERNAL_IP, deferred)
 
-    return raceSignal(deferred.promise, options?.signal)
+    const result = await raceSignal(deferred.promise, options?.signal)
+
+    return result.ip.join('.')
   }
 
   async stop (options?: AbortOptions): Promise<void> {
@@ -215,7 +247,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
         pos += 2 // Reserved (MUST be zero)
         buf.writeUInt16BE(localPort, pos)
         pos += 2 // Internal Port
-        buf.writeUInt16BE(obj.publicPort ?? localPort, pos)
+        buf.writeUInt16BE(obj.externalPort ?? localPort, pos)
         pos += 2 // Requested External Port
         buf.writeUInt32BE(ttl, pos)
         pos += 4 // Requested Port Mapping Lifetime in Seconds
@@ -280,8 +312,8 @@ export class PMPGateway extends EventEmitter implements Gateway {
 
     const buf = req.buf
 
-    log('_next: sending request', buf, this.gateway)
-    this.socket.send(buf, 0, buf.length, SERVER_PORT, this.gateway)
+    log('_next: sending request', buf, this.host)
+    this.socket.send(buf, 0, buf.length, SERVER_PORT, this.host)
   }
 
   onListening (): void {
@@ -356,7 +388,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
         parsed.private = parsed.internal = msg.readUInt16BE(8)
         parsed.public = parsed.external = msg.readUInt16BE(10)
         parsed.ttl = msg.readUInt32BE(12)
-        parsed.type = (req.op === OP_MAP_UDP) ? 'udp' : 'tcp'
+        parsed.type = (req.op === OP_MAP_UDP) ? 'UDP' : 'TCP'
         break
       case OP_EXTERNAL_IP:
         parsed.ip = []

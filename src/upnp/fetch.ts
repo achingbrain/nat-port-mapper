@@ -1,7 +1,7 @@
-import http from 'http'
-import https from 'https'
 import { logger } from '@libp2p/logger'
 import xml2js from 'xml2js'
+import { NS_SOAP } from './constants.js'
+import { getNamespace } from './utils.js'
 
 const log = logger('nat-port-mapper:upnp:fetch')
 
@@ -12,76 +12,24 @@ export interface RequestInit {
   signal?: AbortSignal
 }
 
-function initRequest (url: URL, init: RequestInit): http.ClientRequest {
-  if (url.protocol === 'http:') {
-    return http.request(url, {
-      method: init.method,
-      headers: init.headers,
-      signal: init.signal
-    })
-  } else if (url.protocol === 'https:') {
-    return https.request(url, {
-      method: init.method,
-      headers: init.headers,
-      rejectUnauthorized: false,
-      signal: init.signal
-    })
-  } else {
-    throw new Error('Invalid protocol ' + url.protocol)
-  }
-}
-
 export async function fetchXML <Response = any> (url: URL, init: RequestInit): Promise<Response> {
-  log.trace('-> %s %s', init.method ?? 'GET', url)
+  const response = await fetch(url, init)
+
+  log.trace('-> %s %s', init.method ?? 'GET', url, response.status)
 
   if (init.body != null) {
     log.trace('->', init.body)
   }
 
-  const responseText = await new Promise<string>((resolve, reject) => {
-    const request = initRequest(url, init)
+  const contentType = response.headers.get('content-type')
 
-    if (init.body != null) {
-      request.write(init.body)
-    }
+  if (contentType?.includes('/xml') !== true) {
+    throw new Error(`Bad content type: ${contentType}`)
+  }
 
-    request.end()
+  const responseText = await response.text()
 
-    request.on('error', (err) => {
-      reject(err)
-    })
-
-    request.on('response', (response) => {
-      if (response.statusCode === 302 && response.headers.location != null) {
-        log('redirecting to %s', response.headers.location)
-        fetchXML(new URL(response.headers.location), init)
-          .then(resolve, reject)
-        return
-      }
-
-      if (response.statusCode !== 200) {
-        reject(new Error(`Request failed: ${response.statusCode}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
-        return
-      }
-
-      if (response.headers['content-type'] != null && !response.headers['content-type'].includes('/xml')) {
-        reject(new Error('Bad content type ' + response.headers['content-type']))
-        return
-      }
-
-      let body = ''
-
-      response.on('data', (chunk: Buffer) => {
-        body += chunk.toString()
-      })
-      response.on('end', () => {
-        resolve(body)
-      })
-      response.on('error', (err) => {
-        reject(err)
-      })
-    })
-  })
+  log.trace('<-', responseText)
 
   const parser = new xml2js.Parser({
     explicitRoot: false,
@@ -89,7 +37,28 @@ export async function fetchXML <Response = any> (url: URL, init: RequestInit): P
     attrkey: '@'
   })
 
-  log.trace('<-', responseText)
+  const responseBody = await parser.parseStringPromise(responseText)
 
-  return parser.parseStringPromise(responseText)
+  if (!response.ok) {
+    const soapns = getNamespace(responseBody, NS_SOAP)
+    const body = responseBody[`${soapns}Body`]
+    const fault = body[`${soapns}Fault`]
+    const error = fault?.detail?.UPnPError ?? {
+      errorCode: -1,
+      errorDescription: 'Unknown error'
+    }
+
+    if (fault?.detail?.UPnPError != null) {
+      throw new UPnPError(`Code ${error.errorCode} - ${error.errorDescription}`)
+    }
+
+    throw new Error(`Request failed: ${response.statusText}`)
+  }
+
+  return responseBody
+}
+
+class UPnPError extends Error {
+  static name = 'UPnPError'
+  name = 'UPnPError'
 }

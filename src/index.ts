@@ -14,15 +14,16 @@
  *
  * for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10000) })) {
  *   // Map public port 1000 to private port 1000 with TCP
- *   await gateway.map(1000, {
+ *   await gateway.map(1000, '192.168.1.123', {
  *     protocol: 'tcp'
  *   })
  *
- *   // Map public port 2000 to private port 3000 with UDP
- *   await gateway.map(3000, {
- *     publicPort: 2000,
+ *   // Map port 3000 to any available host name
+ *   for await (const mapping of gateway.mapAll(3000, {
  *     protocol: 'udp'
- *   })
+ *   })) {
+ *     console.info(`mapped ${mapping.internalHost}:${mapping.internalPort} to ${mapping.externalHost}:${mapping.externalPort}`)
+ *   }
  *
  *   // Unmap previously mapped private port 1000
  *   await gateway.unmap(1000)
@@ -46,13 +47,13 @@
  * const gateway = pmpNat(gateway4sync().gateway)
  *
  * // Map public port 1000 to private port 1000 with TCP
- * await gateway.map(1000, {
+ * await gateway.map(1000, '192.168.1.123', {
  *   protocol: 'tcp'
  * })
  *
  * // Map public port 2000 to private port 3000 with UDP
- * await gateway.map(3000, {
- *   publicPort: 2000,
+ * await gateway.map(3000, '192.168.1.123', {
+ *   externalPort: 2000,
  *   protocol: 'udp'
  * })
  *
@@ -89,7 +90,7 @@ export interface GlobalMapPortOptions {
   /**
    * TTL for port mappings in ms
    *
-   * @default 720_000
+   * @default 3_600_000
    */
   ttl?: number
 
@@ -119,7 +120,7 @@ export interface GlobalMapPortOptions {
    *
    * @default 60_000
    */
-  refreshBeforeExpiry?: number
+  refreshThreshold?: number
 }
 
 export interface MapPortOptions extends GlobalMapPortOptions, AbortOptions {
@@ -128,31 +129,73 @@ export interface MapPortOptions extends GlobalMapPortOptions, AbortOptions {
    *
    * @default localPort
    */
-  publicPort?: number
+  externalPort?: number
 
   /**
-   * The external host to map or '' as a wildcard
+   * If specified, only packets from this host will be accepted by the gateway.
+   *
+   * An empty string specifies any host.
    *
    * @default ''
    */
-  publicHost?: string
-
-  /**
-   * The local address to map. If omitted the first non-loopback local address
-   * will be used.
-   */
-  localAddress?: string
+  remoteHost?: string
 
   /**
    * The protocol the port uses
    *
-   * @default 'tcp'
+   * @default 'TCP'
    */
   protocol?: Protocol
 }
 
+export interface PortMapping {
+  /**
+   * The host that remote hosts can use to send packets to the mapped port
+   */
+  externalHost: string
+
+  /**
+   * The port that remote hosts can send packets to
+   */
+  externalPort: number
+
+  /**
+   * The internal host that will receive packets
+   */
+  internalHost: string
+
+  /**
+   * The internal port that will receive packets
+   */
+  internalPort: number
+
+  /**
+   * The protocol that was mapped
+   */
+  protocol: 'TCP' | 'UDP'
+}
+
 export interface Gateway {
+  /**
+   * A unique identifier for this gateway
+   */
   id: string
+
+  /**
+   * The network host that this gateway is accessible on
+   */
+  host: string
+
+  /**
+   * The port that this gateway uses
+   */
+  port: number
+
+  /**
+   * If `IPv4`, this gateway is capable of mapping IPv4 addresses, otherwise it
+   * will map IPv6 addresses
+   */
+  family: 'IPv4' | 'IPv6'
 
   /**
    * Stop all network transactions and unmap any mapped ports
@@ -160,22 +203,58 @@ export interface Gateway {
   stop(options?: AbortOptions): Promise<void>
 
   /**
-   * Map a local port to one on the external network interface
+   * Map a local host:port pair to one on the external network interface
    *
-   * Returns the external port number that was mapped - this may be different
-   * from the requested port number if that port was not free.
+   * If the mapping is successful, the external port number that was mapped is
+   * returned - this may be different from the requested port number if that
+   * port was not free.
    */
-  map(localPort: number, options?: MapPortOptions): Promise<number>
+  map(internalPort: number, internalHost: string, options?: MapPortOptions): Promise<PortMapping>
 
   /**
-   * Unmap a previously mapped port
+   * Try mapping the passed port using all eligible network interfaces on the
+   * current machine.
+   *
+   * Yields successful host:port pairs and will throw if no successful mapping
+   * occurs.
    */
-  unmap(localPort: number, options?: AbortOptions): Promise<void>
+  mapAll(internalPort: number, options?: MapPortOptions): AsyncGenerator<PortMapping, void, unknown>
 
   /**
-   * Find the external network IP address
+   * Unmap a previously mapped port. If the port was not mapped this is a no-op.
+   */
+  unmap(internalPort: number, options?: AbortOptions): Promise<void>
+
+  /**
+   * Find the external network IP address, usually an IPv4 class address.
    */
   externalIp(options?: AbortOptions): Promise<string>
+}
+
+export interface FindGatewaysOptions extends AbortOptions {
+  /**
+   * How often to broadcast `SSDP M-SEARCH` messages while finding gateways.
+   *
+   * By default it is done once at the beginning of the search, pass a ms value
+   * here to broadcast it on an interval.
+   *
+   * This may be necessary if devices on your network do not always respond to
+   * search messages.
+   */
+  searchInterval?: number
+}
+
+export interface UPnPNATOptions extends GlobalMapPortOptions {
+  /**
+   * When a discovered gateway's TTL expires we will attempt to relocate it on
+   * the local network.  By default only one `SSDP M-SEARCH` message will be
+   * broadcast at the beginning of the search, pass a ms value here to instead
+   * broadcast it on an interval.
+   *
+   * This may be necessary if devices on your network do not always respond to
+   * search messages.
+   */
+  gatewaySearchInterval?: number
 }
 
 export interface UPnPNAT {
@@ -184,7 +263,7 @@ export interface UPnPNAT {
    * found, either break out of the `for await..of` loop or abort a passed
    * `AbortSignal`.
    */
-  findGateways (options?: AbortOptions): AsyncGenerator<Gateway, void, unknown>
+  findGateways (options?: FindGatewaysOptions): AsyncGenerator<Gateway, void, unknown>
 
   /**
    * Use a specific network gateway for port mapping.
@@ -198,7 +277,7 @@ export interface UPnPNAT {
 /**
  * Create a UPnP port mapper
  */
-export function upnpNat (options: GlobalMapPortOptions = {}): UPnPNAT {
+export function upnpNat (options: UPnPNATOptions = {}): UPnPNAT {
   return new UPnPClient(options)
 }
 
