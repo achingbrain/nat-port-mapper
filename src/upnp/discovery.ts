@@ -1,56 +1,73 @@
 import ssdp from '@achingbrain/ssdp'
+import { isIPv6 } from '@chainsafe/is-ip'
 import { logger } from '@libp2p/logger'
-import merge from 'it-merge'
-import { UPNP2_ST, UPNP_ST } from './constants.js'
+import { DEVICE_INTERNET_GATEWAY_SERVICE_2 } from './constants.js'
 import type { InternetGatewayDevice } from './device.js'
-import type { Service, SSDP } from '@achingbrain/ssdp'
-import type { AbortOptions } from 'abort-error'
+import type { DiscoverOptions, Service, SSDP } from '@achingbrain/ssdp'
 
 const log = logger('nat-port-mapper:discovery')
 
-export async function * discoverGateways (options?: AbortOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
+export async function * discoverGateways (options?: DiscoverOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
   let discovery: SSDP | undefined
 
   try {
-    discovery = await ssdp()
+    discovery = await ssdp({
+      cache: false,
+      sockets: [{
+        type: 'udp4',
+        broadcast: {
+          address: '239.255.255.250',
+          port: 1900
+        },
+        bind: {
+          address: '0.0.0.0',
+          port: 1900
+        },
+        maxHops: 4
+      }, {
+        type: 'udp6',
+        broadcast: {
+          address: 'FF05::C',
+          port: 1900
+        },
+        bind: {
+          address: '0:0:0:0:0:0:0:0',
+          port: 1900
+        },
+        maxHops: 4
+      }]
+    })
     discovery.on('transport:outgoing-message', (socket, message, remote) => {
-      log.trace('-> Outgoing to %s:%s via %s', remote.address, remote.port, socket.type)
+      log.trace('-> Outgoing to %s:%s via %s', isIPv6(remote.address) ? `[${remote.address}]` : remote.address, remote.port, socket.type)
       log.trace('%s', message)
     })
     discovery.on('transport:incoming-message', (message, remote) => {
-      log.trace('<- Incoming from %s:%s', remote.address, remote.port)
+      log.trace('<- Incoming from %s:%s', isIPv6(remote.address) ? `[${remote.address}]` : remote.address, remote.port)
       log.trace('%s', message)
     })
 
     log('searching for gateways')
 
-    const discovered = new Set<string>()
+    const services = new Set<string>()
 
-    for await (const service of merge(
-      discovery.discover<InternetGatewayDevice>({
-        ...options,
-        serviceType: UPNP_ST
-      }),
-      discovery.discover<InternetGatewayDevice>({
-        ...options,
-        serviceType: UPNP2_ST
-      })
-    )) {
-      if (discovered.has(service.location.toString())) {
+    for await (const service of discovery.discover<InternetGatewayDevice>({
+      ...options,
+      serviceType: DEVICE_INTERNET_GATEWAY_SERVICE_2
+    })) {
+      if (service.serviceType !== DEVICE_INTERNET_GATEWAY_SERVICE_2) {
         continue
       }
 
-      discovered.add(service.location.toString())
+      const location = service.location.toString()
 
-      const deviceType = service.details.device?.deviceType ?? service.serviceType
-
-      if (deviceType === UPNP2_ST) {
-        log('discovered UPnP2 gateway %s %s', service.location, service.uniqueServiceName)
-        yield service
-      } else if (deviceType === UPNP_ST) {
-        log('discovered UPnP gateway %s %s', service.location, service.uniqueServiceName)
-        yield service
+      if (services.has(location)) {
+        continue
       }
+
+      services.add(location)
+
+      log('discovered UPnP2 gateway %s %s', service.location, service.uniqueServiceName)
+      yield service
     }
   } catch (err) {
     if (options?.signal?.aborted !== true) {

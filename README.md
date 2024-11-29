@@ -35,15 +35,16 @@ const client = upnpNat()
 
 for await (const gateway of client.findGateways({ signal: AbortSignal.timeout(10000) })) {
   // Map public port 1000 to private port 1000 with TCP
-  await gateway.map(1000, {
+  await gateway.map(1000, '192.168.1.123', {
     protocol: 'tcp'
   })
 
-  // Map public port 2000 to private port 3000 with UDP
-  await gateway.map(3000, {
-    publicPort: 2000,
+  // Map port 3000 to any available host name
+  for await (const mapping of gateway.mapAll(3000, {
     protocol: 'udp'
-  })
+  })) {
+    console.info(`mapped ${mapping.internalHost}:${mapping.internalPort} to ${mapping.externalHost}:${mapping.externalPort}`)
+  }
 
   // Unmap previously mapped private port 1000
   await gateway.unmap(1000)
@@ -67,13 +68,13 @@ import { gateway4sync } from 'default-gateway'
 const gateway = pmpNat(gateway4sync().gateway)
 
 // Map public port 1000 to private port 1000 with TCP
-await gateway.map(1000, {
+await gateway.map(1000, '192.168.1.123', {
   protocol: 'tcp'
 })
 
 // Map public port 2000 to private port 3000 with UDP
-await gateway.map(3000, {
-  publicPort: 2000,
+await gateway.map(3000, '192.168.1.123', {
+  externalPort: 2000,
   protocol: 'udp'
 })
 

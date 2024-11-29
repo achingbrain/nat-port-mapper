@@ -147,16 +147,18 @@
   },
   "dependencies": {
     "@achingbrain/ssdp": "^4.1.0",
+    "@chainsafe/is-ip": "^2.0.2",
     "@libp2p/logger": "^5.0.1",
     "abort-error": "^1.0.0",
     "err-code": "^3.0.1",
-    "it-merge": "^3.0.5",
+    "netmask": "^2.0.2",
     "p-defer": "^4.0.0",
     "race-signal": "^1.1.0",
     "xml2js": "^0.6.0"
   },
   "devDependencies": {
     "@types/default-gateway": "^7.2.0",
+    "@types/netmask": "^2.0.5",
     "@types/xml2js": "^0.4.11",
     "aegir": "^45.0.1",
     "default-gateway": "^7.2.2"
