@@ -45,6 +45,9 @@ export async function * discoverGateways (options?: DiscoverOptions): AsyncGener
       log.trace('<- Incoming from %s:%s', isIPv6(remote.address) ? `[${remote.address}]` : remote.address, remote.port)
       log.trace('%s', message)
     })
+    discovery.on('error', (err) => {
+      log.error('SSDP error - %e', err)
+    })
 
     log('searching for gateways')
 
