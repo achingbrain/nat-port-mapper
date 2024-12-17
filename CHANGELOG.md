@@ -1,3 +1,9 @@
+## [4.0.1](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.0...v4.0.1) (2024-12-17)
+
+### Bug Fixes
+
+* log SSDP errors ([#85](https://github.com/achingbrain/nat-port-mapper/issues/85)) ([37bb8ca](https://github.com/achingbrain/nat-port-mapper/commit/37bb8cabff591d6d8f82f3acb37e5291c254392c))
+
 ## [4.0.0](https://github.com/achingbrain/nat-port-mapper/compare/v3.0.2...v4.0.0) (2024-11-29)
 
 ### ⚠ BREAKING CHANGES
