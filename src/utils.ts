@@ -1,4 +1,5 @@
 import { isIPv4, isIPv6 } from '@chainsafe/is-ip'
+import { Address4, Address6 } from 'ip-address'
 import { Netmask } from 'netmask'
 
 const PRIVATE_IP_RANGES = [
@@ -94,4 +95,47 @@ export function isPrivateIp (ip: string): boolean | undefined {
   else if (isIpv4EmbeddedIpv6(ip)) return ipv4EmbeddedIpv6Check(ip)
   else if (isIPv6(ip)) return ipv6Check(ip)
   else return undefined
+}
+
+/**
+ * Converts an IP string (IPv4 or IPv6) into a 16-byte Buffer.
+ * IPv4 is mapped into ::ffff:a.b.c.d
+ */
+export function to16ByteIP (clientIP: string): Buffer {
+  // Try IPv4 first
+  if (Address4.isValid(clientIP)) {
+    const a4 = new Address4(clientIP)
+    const bytes4 = a4.toArray()
+
+    if (bytes4.length !== 4) {
+      throw new Error('Unexpected IPv4 length')
+    }
+
+    // Build a 16-byte buffer (IPv4 mapped to IPv6 => ::ffff:a.b.c.d)
+    const ipBuf = Buffer.alloc(16, 0)
+    // First 10 bytes remain 0
+    ipBuf[10] = 0xff
+    ipBuf[11] = 0xff
+
+    for (let i = 0; i < 4; i++) {
+      ipBuf[12 + i] = bytes4[i]
+    }
+
+    return ipBuf
+  }
+
+  // Otherwise, try IPv6
+  if (Address6.isValid(clientIP)) {
+    const a6 = new Address6(clientIP)
+
+    const bytes6 = a6.toUnsignedByteArray()
+
+    if (bytes6.length !== 16) {
+      throw new Error(`Unexpected IPv6 length: ${bytes6.length}`)
+    }
+
+    return Buffer.from(bytes6)
+  }
+
+  throw new Error(`Invalid IP address: ${clientIP}`)
 }

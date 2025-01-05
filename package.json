@@ -137,6 +137,7 @@
   "scripts": {
     "clean": "aegir clean",
     "lint": "aegir lint",
+    "lint:fix": "aegir lint --fix",
     "dep-check": "aegir dep-check",
     "doc-check": "aegir doc-check",
     "build": "aegir build --no-bundle",
@@ -151,6 +152,7 @@
     "@libp2p/logger": "^5.0.1",
     "abort-error": "^1.0.0",
     "err-code": "^3.0.1",
+    "ip-address": "^10.0.1",
     "netmask": "^2.0.2",
     "p-defer": "^4.0.0",
     "race-signal": "^1.1.0",
