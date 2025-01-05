@@ -9,7 +9,7 @@ import { raceSignal } from 'race-signal'
 import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_THRESHOLD, DEFAULT_REFRESH_TIMEOUT } from '../upnp/constants.js'
 import { findLocalAddresses } from '../upnp/utils.js'
 import { isPrivateIp, to16ByteIP } from '../utils.js'
-import type { Gateway, MapPortOptions, GlobalMapPortOptions, PortMapping, PCPMapPortOptions } from '../index.js'
+import type { Gateway, GlobalMapPortOptions, PortMapping, PCPMapPortOptions, Protocol } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
@@ -26,7 +26,6 @@ const PCP_VERSION = 2
 const OP_ANNOUNCE = 0
 const OP_MAP = 1
 const OP_PEER = 2
-// const SERVER_DELTA = 128
 
 // Bits
 const RESERVED_BIT = 0
@@ -34,6 +33,9 @@ const RESERVED_BIT = 0
 // Protocols
 const PROTO_TCP = 0x06
 const PROTO_UDP = 0x11
+
+const EMPTY_IPV4 = '0.0.0.0'
+const EMPTY_IPV6 = '0000:0000:0000:0000:0000:0000:0000:0000'
 
 // Result codes
 const RESULT_CODES: Record<number, string> = {
@@ -53,14 +55,16 @@ const RESULT_CODES: Record<number, string> = {
   13: 'Excessive remote peers'
 }
 
-export interface PortMappingOptions {
-  type?: 'tcp' | 'udp'
-  ttl?: number
-  public?: number
-  private?: number
-  internal?: number
-  external?: number
+interface MappingNonce {
+  protocol: Protocol
+  internalHost: string
+  internalPort: number
+  externalHost?: string
+  externalPort?: number
+  nonce: Buffer
 }
+
+type MappingNonces = MappingNonce[]
 
 export class PCPGateway extends EventEmitter implements Gateway {
   public id: string
@@ -75,6 +79,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
   public readonly family: 'IPv4' | 'IPv6'
   private readonly options: GlobalMapPortOptions
   private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
+  private readonly mappingNonces: MappingNonces
 
   constructor (gateway: string, options: GlobalMapPortOptions = {}) {
     super()
@@ -90,6 +95,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.id = this.host
     this.options = options
     this.refreshIntervals = new Map()
+    this.mappingNonces = []
 
     // Create socket
     if (isIPv4(gateway)) {
@@ -113,7 +119,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     log('Client#connect()')
     if (this.connecting) return
     this.connecting = true
-    this.socket.bind(CLIENT_PORT)
+    this.socket.bind(0) // use a random port as per spec
   }
 
   async * mapAll (localPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
@@ -121,7 +127,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     for (const host of findLocalAddresses(this.family)) {
       try {
-        console.log('host', host)
+        log('mapping host', host)
         options.clientAddress = host
         const mapping = await this.map(localPort, host, options)
         mapped = true
@@ -144,7 +150,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
       publicHost: opts?.suggestedExternalAddress ?? '',
       localAddress: localHost,
       protocol: opts?.protocol ?? 'tcp',
-      description: opts?.description ?? this.options.description ?? '@achingbrain/nat-port-mapper',
       ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PORT_MAPPING_TTL,
       autoRefresh: opts?.autoRefresh ?? this.options.autoRefresh ?? true,
       refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT,
@@ -168,6 +173,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     const result = await raceSignal(deferred.promise, opts?.signal)
 
     if (options.autoRefresh) {
+      // TODO
       const refresh = ((localPort: number, opts: PCPMapPortOptions): void => {
         this.map(localPort, localHost, {
           ...opts,
@@ -198,7 +204,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     await this.map(localPort, opts.clientAddress, {
       ...opts,
-      description: '',
       ttl: 0
     })
   }
@@ -236,8 +241,49 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
   }
 
-  private generateMappingNonce (): Buffer {
-    return randomBytes(12)
+  private _newMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): MappingNonce {
+    return {
+      protocol,
+      internalHost,
+      internalPort,
+      nonce: randomBytes(12)
+    }
+  }
+
+  private getMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): MappingNonce | undefined {
+    this.mappingNonces.forEach(mn => {
+      if (mn.internalHost === internalHost && mn.internalPort === internalPort && mn.protocol.toLowerCase() === protocol.toLowerCase()) {
+        return mn
+      }
+    })
+
+    return undefined
+  }
+
+  private getOrCreateMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): MappingNonce {
+    let mn = this.getMappingNonce(internalHost, internalPort, protocol)
+    if (mn === undefined) {
+      mn = this._newMappingNonce(internalHost, internalPort, protocol)
+      this.mappingNonces.push(mn)
+    }
+
+    return mn
+  }
+
+  private updateMappingNonce (internalPort: number, protocol: Protocol, nonce: Buffer, externalHost: string, externalPort: number): boolean {
+    let updated = false
+
+    for (let i = 0; i < this.mappingNonces.length; i++) {
+      if (this.mappingNonces[i].internalPort === internalPort &&
+        this.mappingNonces[i].protocol.toString().toLowerCase() === protocol.toString().toLowerCase() &&
+        (Buffer.compare(this.mappingNonces[i].nonce, nonce) === 0)
+      ) {
+        this.mappingNonces[i].externalHost = externalHost
+        this.mappingNonces[i].externalPort = externalPort
+        updated = true
+      }
+    }
+    return updated
   }
 
   private pcpRequestHeader (clientIP: string, ttl: number, opcode: number): Buffer {
@@ -271,10 +317,9 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   /**
-   * Queues a UDP request to be send to the gateway device.
+   * Queues a UDP request to be sent to the gateway device.
    */
   request (op: typeof OP_MAP, deferred: DeferredPromise<any>, localPort: number, obj: PCPMapPortOptions): void {
-    console.log('request')
     log('Client#request()', [op, obj])
 
     let buf
@@ -283,9 +328,13 @@ export class PCPGateway extends EventEmitter implements Gateway {
     let ttl
 
     switch (op) {
-      case OP_MAP:
+      case OP_MAP: {
         if (obj == null) {
           throw new Error('mapping a port requires an "options" object')
+        }
+
+        if (obj.protocol === undefined || obj.protocol === null) {
+          throw new Error('protocol required')
         }
 
         ttl = Number(obj.ttl ?? this.options.ttl ?? 0)
@@ -311,35 +360,53 @@ export class PCPGateway extends EventEmitter implements Gateway {
         //  20-35: Suggested External IP (16 byte)
         // Total: 36 bytes.
 
-        const nonce = this.generateMappingNonce()
-        nonce.copy(buf, pos, 0, 12)
+        // Mapping nonce
+        const mappingNonce = this.getOrCreateMappingNonce(obj.clientAddress, localPort, obj.protocol)
+        mappingNonce.nonce.copy(buf, pos, 0, 12)
         pos += 12
 
+        // Protocol
         if (obj.protocol === 'udp' || obj.protocol === 'UDP') {
           buf.writeUInt8(PROTO_UDP, pos)
-        } else {
+        } else if (obj.protocol === 'tcp' || obj.protocol === 'TCP') {
           buf.writeUInt8(PROTO_TCP, pos)
+        } else {
+          throw new Error('unsupported protocol')
         }
         pos++
 
-        // reserved bytes
+        // Reserved
         buf.writeUInt8(op, pos)
         buf.writeUInt16BE(0, pos)
         pos += 3
 
+        // Internal Port
         buf.writeUInt16BE(localPort, pos)
-        pos += 2 // Internal Port
+        pos += 2
 
+        // Suggested External Port
         buf.writeUInt16BE(obj.suggestedExternalPort ?? localPort, pos)
-        pos += 2 // Suggested External Port
+        pos += 2
 
-        // TODO suggested external IP
+        // Suggested external IP
+        let suggestedIP: Buffer
 
+        if (obj.suggestedExternalAddress !== undefined && obj.suggestedExternalAddress !== null) {
+          suggestedIP = to16ByteIP(obj.suggestedExternalAddress)
+        } else {
+          if (isIPv4(obj.clientAddress)) {
+            suggestedIP = to16ByteIP(EMPTY_IPV4)
+          } else {
+            suggestedIP = to16ByteIP(EMPTY_IPV6)
+          }
+        }
+
+        suggestedIP.copy(buf, pos, 0, 16)
         break
+      }
       default:
         throw new Error(`Invalid opcode: ${op}`)
     }
-    // assert.equal(pos, size, 'buffer not fully written!')
 
     // Add it to queue
     this.queue.push({ op, buf, deferred })
@@ -449,6 +516,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     if (parsed.vers !== PCP_VERSION) {
       cb(new Error(`"vers" must be ${PCP_VERSION}. Got: ${parsed.vers}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+      return
     }
 
     // // Common fields
@@ -459,30 +527,48 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     // Error
     if (parsed.resultCode !== 0) {
-      cb(errCode(new Error(parsed.resultMessage), parsed.resultCode)); return
+      cb(errCode(new Error(parsed.resultMessage), parsed.resultCode))
+      return
     }
 
     // Success
     switch (req.op) {
-      case OP_MAP:
+      case OP_MAP: {
         parsed.nonce = Buffer.alloc(12, 0)
         msg.copy(parsed.nonce, 0, 24, 36) // TODO check nonce match
 
         parsed.protocol = msg.readUint8(36)
+        if (parsed.protocol === PROTO_TCP) {
+          parsed.type = 'TCP'
+        } else if (parsed.protocol === PROTO_UDP) {
+          parsed.type = 'UDP'
+        } else {
+          cb(new Error(`Unsupported protocol: ${parsed.protocol}`))
+          return
+        }
+
         parsed.internalPort = msg.readUInt16BE(40)
         parsed.externalPort = msg.readUInt16BE(42)
 
         parsed.externalHost = Buffer.alloc(16, 0)
         msg.copy(parsed.externalHost, 0, 44, 60)
 
+        const updated = this.updateMappingNonce(parsed.internalPort, parsed.type, parsed.nonce, parsed.externalHost, parsed.externalPort)
+        if (!updated) {
+          cb(new Error(`Could not find mapping for ${parsed.internalPort}, ${parsed.type}, ${parsed.nonce.toString('hex')}`))
+          return
+        }
+
         log('parsed', parsed)
         parsed.private = parsed.internalPort
         parsed.public = parsed.externalPort
         parsed.ttl = parsed.lifetime
-        parsed.type = parsed.protocol
         break
-      default:
-        { cb(new Error(`Unknown opcode: ${req.op}`)); return }
+      }
+      default: {
+        cb(new Error(`Unknown opcode: ${req.op}`))
+        return
+      }
     }
 
     cb(undefined, parsed)

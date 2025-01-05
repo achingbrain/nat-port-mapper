@@ -104,10 +104,10 @@ export function isPrivateIp (ip: string): boolean | undefined {
 export function to16ByteIP (clientIP: string): Buffer {
   // Try IPv4 first
   if (Address4.isValid(clientIP)) {
-    const a4 = new Address4(clientIP)
-    const bytes4 = a4.toArray()
+    const addr = new Address4(clientIP)
+    const bytes = addr.toArray()
 
-    if (bytes4.length !== 4) {
+    if (bytes.length !== 4) {
       throw new Error('Unexpected IPv4 length')
     }
 
@@ -118,7 +118,7 @@ export function to16ByteIP (clientIP: string): Buffer {
     ipBuf[11] = 0xff
 
     for (let i = 0; i < 4; i++) {
-      ipBuf[12 + i] = bytes4[i]
+      ipBuf[12 + i] = bytes[i]
     }
 
     return ipBuf
@@ -126,15 +126,17 @@ export function to16ByteIP (clientIP: string): Buffer {
 
   // Otherwise, try IPv6
   if (Address6.isValid(clientIP)) {
-    const a6 = new Address6(clientIP)
+    const addr = new Address6(clientIP)
 
-    const bytes6 = a6.toUnsignedByteArray()
+    let bytes = addr.toUnsignedByteArray()
 
-    if (bytes6.length !== 16) {
-      throw new Error(`Unexpected IPv6 length: ${bytes6.length}`)
+    if (bytes.length < 16) {
+      // Left-pad with zeros
+      const pad = new Array(16 - bytes.length).fill(0)
+      bytes = pad.concat(bytes)
     }
 
-    return Buffer.from(bytes6)
+    return Buffer.from(bytes)
   }
 
   throw new Error(`Invalid IP address: ${clientIP}`)
