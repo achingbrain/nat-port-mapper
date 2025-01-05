@@ -27,6 +27,7 @@ describe('pcp-nat-port-mapper', () => {
     console.log('gateway', gateway)
 
     for await (const mapping of gateway.mapAll(port, {})) {
+      console.log('mapping', mapping)
       expect(mapping.externalHost).to.be.a('string')
       expect(mapping.externalPort).to.be.a('number')
 
@@ -36,13 +37,17 @@ describe('pcp-nat-port-mapper', () => {
       mapped.push(mapping)
     }
 
+
+    // Ensure that we got at least one successful mapping
+    expect(mapped).to.have.lengthOf.at.least(1)
+
     await new Promise<void>((resolve) => {
       setTimeout(() => {
         resolve()
-      }, 30000)
+      }, 10000)
     })
 
-    await gateway.unmap(port)
+    // await gateway.unmap(port) // TODO
   })
 
   it.skip('should discover an external ip address', async () => {

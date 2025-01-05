@@ -138,7 +138,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   async map (localPort: number, localHost: string, opts: PCPMapPortOptions): Promise<PortMapping> {
-    console.log('in map')
     const options = {
       clientAddress: opts.clientAddress,
       publicPort: opts?.suggestedExternalPort ?? localPort,
@@ -151,7 +150,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
       refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT,
       refreshBeforeExpiry: opts?.refreshThreshold ?? this.options.refreshThreshold ?? DEFAULT_REFRESH_THRESHOLD
     }
-    console.log('x1', opts)
 
     log('Client#portMapping()')
     switch (options.protocol.toLowerCase()) {
@@ -198,7 +196,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
   async unmap (localPort: number, opts: PCPMapPortOptions): Promise<void> {
     log('Client#portUnmapping()')
 
-    await this.map(localPort, '', {
+    await this.map(localPort, opts.clientAddress, {
       ...opts,
       description: '',
       ttl: 0
@@ -221,14 +219,15 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.req = null
     this.reqActive = false
 
-    await Promise.all([...this.refreshIntervals.entries()].map(async ([port, timeout]) => {
-      clearTimeout(timeout)
-      const opts = {
-        clientAddress: '', // TODO
-        ...options
-      }
-      await this.unmap(port, opts)
-    }))
+    // TODO
+    // await Promise.all([...this.refreshIntervals.entries()].map(async ([port, timeout]) => {
+    //   clearTimeout(timeout)
+    //   const opts = {
+    //     clientAddress: '', // TODO
+    //     ...options
+    //   }
+    //   await this.unmap(port, opts)
+    // }))
 
     this.refreshIntervals.clear()
 
@@ -429,44 +428,64 @@ export class PCPGateway extends EventEmitter implements Gateway {
     const req = this.queue[0]
     const parsed: any = { msg }
     parsed.vers = msg.readUInt8(0)
-    parsed.op = msg.readUInt8(1)
 
-    // if (parsed.op - SERVER_DELTA !== req.op) {
-    //   log('WARN: ignoring unexpected message opcode', parsed.op)
-    //   return
-    // }
+    parsed.r = (msg.readUint8(1) >> 7) & 0x01
+    if (parsed.r !== 1) {
+      cb(new Error(`"R" must be 1. Got: ${parsed.r}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+      return
+    }
+
+    parsed.op = msg.readUint8(1) & 0x7F
+
+    if (parsed.op !== req.op) {
+      log('WARN: ignoring unexpected message opcode', parsed.op)
+      return
+    }
 
     // if we got here, then we're gonna invoke the request's callback,
     // so shift this request off of the queue.
     log('removing "req" off of the queue')
     this.queue.shift()
 
-    if (parsed.vers !== 0) {
-      cb(new Error(`"vers" must be 0. Got: ${parsed.vers}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+    if (parsed.vers !== PCP_VERSION) {
+      cb(new Error(`"vers" must be ${PCP_VERSION}. Got: ${parsed.vers}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
     }
 
     // // Common fields
-    // parsed.resultCode = msg.readUInt16BE(2)
-    // parsed.resultMessage = RESULT_CODES[parsed.resultCode]
-    // parsed.epoch = msg.readUInt32BE(4)
-    //
-    // // Error
-    // if (parsed.resultCode !== 0) {
-    //   cb(errCode(new Error(parsed.resultMessage), parsed.resultCode)); return
-    // }
-    //
-    // // Success
-    // switch (req.op) {
-    //   case OP_MAP:
-    //     parsed.private = parsed.internal = msg.readUInt16BE(8)
-    //     parsed.public = parsed.external = msg.readUInt16BE(10)
-    //     parsed.ttl = msg.readUInt32BE(12)
-    //     break
-    //   default:
-    //     { cb(new Error(`Unknown opcode: ${req.op}`)); return }
-    // }
-    //
-    // cb(undefined, parsed)
+    parsed.resultCode = msg.readUInt8(3)
+    parsed.resultMessage = RESULT_CODES[parsed.resultCode]
+    parsed.lifetime = msg.readUInt32BE(4)
+    parsed.epoch = msg.readUInt32BE(8)
+
+    // Error
+    if (parsed.resultCode !== 0) {
+      cb(errCode(new Error(parsed.resultMessage), parsed.resultCode)); return
+    }
+
+    // Success
+    switch (req.op) {
+      case OP_MAP:
+        parsed.nonce = Buffer.alloc(12, 0)
+        msg.copy(parsed.nonce, 0, 24, 36) // TODO check nonce match
+
+        parsed.protocol = msg.readUint8(36)
+        parsed.internalPort = msg.readUInt16BE(40)
+        parsed.externalPort = msg.readUInt16BE(42)
+
+        parsed.externalHost = Buffer.alloc(16, 0)
+        msg.copy(parsed.externalHost, 0, 44, 60)
+
+        log('parsed', parsed)
+        parsed.private = parsed.internalPort
+        parsed.public = parsed.externalPort
+        parsed.ttl = parsed.lifetime
+        parsed.type = parsed.protocol
+        break
+      default:
+        { cb(new Error(`Unknown opcode: ${req.op}`)); return }
+    }
+
+    cb(undefined, parsed)
   }
 
   onClose (): void {
