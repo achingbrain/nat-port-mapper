@@ -137,7 +137,6 @@
   "scripts": {
     "clean": "aegir clean",
     "lint": "aegir lint",
-    "lint:fix": "aegir lint --fix",
     "dep-check": "aegir dep-check",
     "doc-check": "aegir doc-check",
     "build": "aegir build --no-bundle",
