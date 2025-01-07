@@ -36,6 +36,8 @@ const PROTO_UDP = 0x11
 
 const EMPTY_IPV4 = '0.0.0.0'
 const EMPTY_IPV6 = '0000:0000:0000:0000:0000:0000:0000:0000'
+const DISCARD_PORT = 9
+const MINIMUM_LIFETIME = 120
 
 const DEFAULT_PCP_PORT_MAPPING_TTL = 60 * 60 // 1 hour
 
@@ -125,24 +127,24 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.socket.bind(0) // use a random port as per spec
   }
 
-  async * mapAll (localPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
+  async * mapAll (internalPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
     let mapped = false
 
     for (const host of findLocalAddresses(this.family)) {
       try {
         log('mapping host', host)
         options.clientAddress = host
-        const mapping = await this.map(localPort, host, options)
+        const mapping = await this.map(internalPort, host, options)
         mapped = true
 
         yield mapping
       } catch (err) {
-        log.error('error mapping %s:%d - %e', host, localPort, err)
+        log.error('error mapping %s:%d - %e', host, internalPort, err)
       }
     }
 
     if (!mapped) {
-      throw new Error(`All attempts to map port ${localPort} failed`)
+      throw new Error(`All attempts to map port ${internalPort} failed`)
     }
   }
 
@@ -225,10 +227,34 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   async externalIp (options?: AbortOptions): Promise<string> {
-    // TODO create a short lived map to get the external IP as recommeneded by the spec 11.6 Learning the External IP
-    // Address Alone. Should be OK for residential NATs but Carrier-Grade NATs may use a pool of addresses so the
+    // Create a short lived map to get the external IP as recommeneded by the
+    // spec 11.6 Learning the External IP Address Alone. It should be OK for
+    // residential NATs but Carrier-Grade NATs may use a pool of addresses so
     // the external address isn't guaranteed.
-    throw new Error('unsupported')
+
+    for (const host of findLocalAddresses(this.family)) {
+      const opts: PCPMapPortOptions = {
+        clientAddress: host,
+        ttl: MINIMUM_LIFETIME,
+        autoRefresh: false
+      }
+
+      let externalIp: string | undefined
+
+      try {
+        const mapping = await this.map(DISCARD_PORT, host, opts)
+        externalIp = mapping.externalHost
+      } catch (e: any) {
+        log(e)
+        //
+      }
+
+      if (externalIp !== undefined) {
+        return externalIp
+      }
+    }
+
+    throw new Error('Could not lookup external IP')
   }
 
   async stop (options?: AbortOptions): Promise<void> {
@@ -592,7 +618,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
         parsed.externalAddress = Buffer.alloc(16, 0)
         msg.copy(parsed.externalAddress, 0, 44, 60)
 
-        const updated = this.updateMappingNonce(parsed.internalPort, parsed.protocol, parsed.nonce, parsed.externalAddress, parsed.externalPort, Math.floor(Date.now() / 1000) + parsed.lifetime)
+        const updated = this.updateMappingNonce(parsed.internalPort, parsed.protocol, parsed.nonce, parsed.externalAddress, parsed.externalPort, (Math.floor(Date.now() / 1000) + parsed.lifetime) * 1000)
         if (!updated) {
           cb(new Error(`Could not find mapping for ${parsed.internalPort}, ${parsed.type}, ${parsed.nonce.toString('hex')}`))
           return
