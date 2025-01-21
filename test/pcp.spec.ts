@@ -10,6 +10,7 @@ async function waitForRefreshedMapping (
   maxWaitMs: number // total time to poll before giving up
 ): Promise<boolean> {
   const start = Date.now()
+
   const initialMappings = JSON.parse(JSON.stringify(gateway.getMappings()))
   // const initialMappings = gateway.getMappings()
 
