@@ -2,13 +2,14 @@ import { randomBytes } from 'crypto'
 import { createSocket } from 'dgram'
 import { EventEmitter } from 'events'
 import { isIPv4, isIPv6 } from '@chainsafe/is-ip'
+import { parseIP } from '@chainsafe/is-ip/parse'
 import { logger } from '@libp2p/logger'
 import errCode from 'err-code'
 import defer, { type DeferredPromise } from 'p-defer'
 import { raceSignal } from 'race-signal'
 import { DEFAULT_REFRESH_TIMEOUT } from '../upnp/constants.js'
 import { findLocalAddresses } from '../upnp/utils.js'
-import { isPrivateIp, to16ByteIP } from '../utils.js'
+import { isPrivateIp } from '../utils.js'
 import type { Gateway, GlobalMapPortOptions, PortMapping, PCPMapPortOptions, Protocol } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
@@ -449,8 +450,12 @@ export class PCPGateway extends EventEmitter implements Gateway {
     buf.writeUInt32BE(ttl, pos) // lifetime
     pos += 4
 
-    const ipBuf = to16ByteIP(clientIP)
-    ipBuf.copy(buf, pos, 0, 16)
+    const ipBuf = parseIP(clientIP, true)
+    if (ipBuf === undefined) {
+      throw new Error('Could not parse IP')
+    }
+
+    buf.set(ipBuf, pos)
 
     return buf
   }
@@ -520,19 +525,23 @@ export class PCPGateway extends EventEmitter implements Gateway {
     pos += 2
 
     // Suggested external IP
-    let suggestedIP: Buffer
+    let suggestedIP: Uint8Array | undefined
 
     if (obj.suggestedExternalAddress !== undefined && obj.suggestedExternalAddress !== null) {
-      suggestedIP = to16ByteIP(obj.suggestedExternalAddress)
+      suggestedIP = parseIP(obj.suggestedExternalAddress, true)
     } else {
       if (isIPv4(obj.clientAddress)) {
-        suggestedIP = to16ByteIP(EMPTY_IPV4)
+        suggestedIP = parseIP(EMPTY_IPV4, true)
       } else {
-        suggestedIP = to16ByteIP(EMPTY_IPV6)
+        suggestedIP = parseIP(EMPTY_IPV6, true)
       }
     }
 
-    suggestedIP.copy(buf, pos, 0, 16)
+    if (suggestedIP === undefined) {
+      throw new Error('Could not parse IP')
+    }
+
+    buf.set(suggestedIP, pos)
 
     return buf
   }
