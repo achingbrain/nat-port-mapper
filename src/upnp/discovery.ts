@@ -1,11 +1,29 @@
+import { networkInterfaces } from 'node:os'
 import ssdp from '@achingbrain/ssdp'
 import { isIPv6 } from '@chainsafe/is-ip'
-import { logger } from '@libp2p/logger'
+import { logger, enabled } from '@libp2p/logger'
 import { DEVICE_INTERNET_GATEWAY_SERVICE_2 } from './constants.js'
 import type { InternetGatewayDevice } from './device.js'
 import type { DiscoverOptions, Service, SSDP } from '@achingbrain/ssdp'
 
 const log = logger('nat-port-mapper:discovery')
+
+function weAreSender (sender: string): boolean {
+  const addresses: string[] = []
+
+  // only calculate if trace logging is enabled
+  if (enabled('nat-port-mapper:discovery:trace')) {
+    const interfaces = networkInterfaces()
+
+    Object.entries(interfaces).forEach(([name, addrs]) => {
+      addrs?.forEach(addr => {
+        addresses.push(addr.address)
+      })
+    })
+  }
+
+  return addresses.includes(sender)
+}
 
 export async function * discoverGateways (options?: DiscoverOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
   let discovery: SSDP | undefined
@@ -42,6 +60,10 @@ export async function * discoverGateways (options?: DiscoverOptions): AsyncGener
       log.trace('%s', message)
     })
     discovery.on('transport:incoming-message', (message, remote) => {
+      if (weAreSender(remote.address)) {
+        return
+      }
+
       log.trace('<- Incoming from %s:%s', isIPv6(remote.address) ? `[${remote.address}]` : remote.address, remote.port)
       log.trace('%s', message)
     })
