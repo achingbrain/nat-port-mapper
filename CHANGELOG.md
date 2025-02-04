@@ -1,3 +1,9 @@
+## [4.0.2](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.1...v4.0.2) (2025-02-04)
+
+### Bug Fixes
+
+* only log SSDP search response from other peers ([#87](https://github.com/achingbrain/nat-port-mapper/issues/87)) ([4ed5d12](https://github.com/achingbrain/nat-port-mapper/commit/4ed5d12d884c2b270480fd89a135f566bccb1cac))
+
 ## [4.0.1](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.0...v4.0.1) (2024-12-17)
 
 ### Bug Fixes
