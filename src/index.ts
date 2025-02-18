@@ -2,8 +2,9 @@
  * @packageDocumentation
  *
  * Enable NAT traversal by mapping public ports to ports on your computer using
- * either [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play) or
- * [NAT-PMP](https://en.wikipedia.org/wiki/NAT_Port_Mapping_Protocol).
+ * either [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play,)
+ * [NAT-PMP](https://en.wikipedia.org/wiki/NAT_Port_Mapping_Protocol) or
+ * [PCP](https://en.wikipedia.org/wiki/Port_Control_Protocol).
  *
  * @example UPnP NAT
  *
@@ -69,6 +70,44 @@
  * await gateway.stop()
  * ```
  *
+ * @example PCP IPv6 Global Unicast Address (GUA) firewall port opening
+ *
+ * ```TypeScript
+ * import { pcp } from '@achingbrain/nat-port-mapper'
+ *
+ * const gateway = pcp('2a0e:e0c0:0001:0002:e000:0001:3243:c001') // The GUA of router, not local link address
+ *
+ * // Map public port 1000 to private port 1000 with TCP
+ * await gateway.map(1000, '2a0e:e0c0:0001:0002:1619:e31a:f311:c00d', {
+ *   protocol: 'tcp'
+ * })
+ *
+ * // Map public port 2000 to private port 3000 with UDP.
+ * // Mapping a public port is best effort as the port may already be in use.
+ * // If the router could not assign the request port, it will assign another
+ * // free port.
+ * await gateway.map(3000, '2a0e:e0c0:0001:0002:1619:e31a:f311:c00d', {
+ *   externalPort: 2000,
+ *   protocol: 'udp'
+ * })
+ *
+ * // Unmap previously mapped private port 1000
+ * // Unmap() attempts to remove all mapped ports and cancel any in-flight
+ * // network operations. However, if the internal host has sent traffic
+ * // recently (within the servers idle-timeout period), the mapping isn’t
+ * // immediately deleted. Instead, the mapping’s lifetime is set to the
+ * // remaining idle-timeout period.
+ * await gateway.unmap(1000)
+ *
+ * // Get external IP
+ * const externalIp = await gateway.externalIp()
+ *
+ * console.log('External IP:', externalIp)
+ *
+ * // Unmap all mapped ports and cancel any in-flight network operations
+ * await gateway.stop()
+ * ```
+ *
  * ## Credits
  *
  * Based on [alxhotel/nat-api](https://github.com/alxhotel/nat-api)
@@ -77,7 +116,8 @@
  *
  * - <http://miniupnp.free.fr/nat-pmp.html>
  * - <http://wikipedia.org/wiki/NAT_Port_Mapping_Protocol>
- * - <http://tools.ietf.org/html/draft-cheshire-nat-pmp-03>
+ * - <https://datatracker.ietf.org/doc/rfc6886>
+ * - <https://www.rfc-editor.org/rfc/rfc6887>
  */
 
 import { PCPGateway } from './pcp/gateway.js'
@@ -117,7 +157,7 @@ export interface GlobalMapPortOptions {
   refreshTimeout?: number
 
   /**
-   * How long before expiry to remap the port mapping in ms
+   * How long before expiry to remap the port mapping in ms - not used by PCP
    *
    * @default 60_000
    */

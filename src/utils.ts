@@ -1,3 +1,4 @@
+import os from 'node:os'
 import { isIPv4, isIPv6 } from '@chainsafe/is-ip'
 import { Netmask } from 'netmask'
 
@@ -94,4 +95,43 @@ export function isPrivateIp (ip: string): boolean | undefined {
   else if (isIpv4EmbeddedIpv6(ip)) return ipv4EmbeddedIpv6Check(ip)
   else if (isIPv6(ip)) return ipv6Check(ip)
   else return undefined
+}
+
+export function * findLocalAddresses (family: 'IPv4' | 'IPv6'): Generator<string, void, unknown> {
+  const interfaces = os.networkInterfaces()
+  let foundAddress = false
+
+  for (const infos of Object.values(interfaces)) {
+    if (infos == null) {
+      continue
+    }
+
+    for (const info of infos) {
+      if (info.internal) {
+        // ignore loopback
+        continue
+      }
+
+      if (info.family !== family) {
+        continue
+      }
+
+      if (info.family === 'IPv6' && info.address.startsWith('fe80')) {
+        // ignore IPv6 link-local unicast
+        continue
+      }
+
+      if (info.family === 'IPv4' && info.address.startsWith('169.254')) {
+        // ignore IPv4 link-local unicast
+        continue
+      }
+
+      foundAddress = true
+      yield info.address
+    }
+  }
+
+  if (!foundAddress) {
+    throw new Error('Could not detect any local addresses eligible for mapping - please pass a `localAddress` to the map function instead')
+  }
 }
