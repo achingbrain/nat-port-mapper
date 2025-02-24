@@ -73,9 +73,9 @@
  * @example PCP IPv6 Global Unicast Address (GUA) firewall port opening
  *
  * ```TypeScript
- * import { pcp } from '@achingbrain/nat-port-mapper'
+ * import { pcpNat } from '@achingbrain/nat-port-mapper'
  *
- * const gateway = pcp('2a0e:e0c0:0001:0002:e000:0001:3243:c001') // The GUA of router, not local link address
+ * const gateway = pcpNat('2a0e:e0c0:0001:0002:e000:0001:3243:c001') // The IPv6 GUA LAN address of router, not local link address
  *
  * // Map public port 1000 to private port 1000 with TCP
  * await gateway.map(1000, '2a0e:e0c0:0001:0002:1619:e31a:f311:c00d', {
@@ -92,7 +92,7 @@
  * })
  *
  * // Unmap previously mapped private port 1000
- * // Unmap() attempts to remove all mapped ports and cancel any in-flight
+ * // unmap() attempts to remove all mapped ports and cancel any in-flight
  * // network operations. However, if the internal host has sent traffic
  * // recently (within the servers idle-timeout period), the mapping isn’t
  * // immediately deleted. Instead, the mapping’s lifetime is set to the
@@ -104,7 +104,7 @@
  *
  * console.log('External IP:', externalIp)
  *
- * // Unmap all mapped ports and cancel any in-flight network operations
+ * // Attempt Unmap all mapped ports and cancel any in-flight network operations.
  * await gateway.stop()
  * ```
  *

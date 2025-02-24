@@ -13,10 +13,8 @@ import type { Gateway, GlobalMapPortOptions, PortMapping, PCPMapPortOptions, Pro
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
 
-const log = logger('nat-port-mapper:pcp')
-
 // rfc6887 definitions
-const CLIENT_PORT = 5350
+// const CLIENT_PORT = 5350
 const SERVER_PORT = 5351
 const PCP_VERSION = 2
 
@@ -32,8 +30,8 @@ const RESERVED_BIT = 0
 const PROTO_TCP = 0x06
 const PROTO_UDP = 0x11
 
-const MULTICAST_IPV4 = '224.0.0.1'
-const MULTICASE_IPV6 = 'ff02:0000:0000:0000:0000:0000:0000:0001'
+// const MULTICAST_IPV4 = '224.0.0.1'
+// const MULTICASE_IPV6 = 'ff02:0000:0000:0000:0000:0000:0000:0001'
 const EMPTY_IPV4 = '0.0.0.0'
 const EMPTY_IPV6 = '0000:0000:0000:0000:0000:0000:0000:0000'
 const MINIMUM_LIFETIME = 120
@@ -58,9 +56,11 @@ const RESULT_CODES: Record<number, string> = {
   9: 'Unsupported protocol',
   10: 'Exceeded port quota',
   11: 'External port and/or external address cannot be provided',
-  12: 'Address mismatch. Source IP address does not match requested PCP client address. Possibly using the wrong IP address e.g. IPv6 deprecated addresses or there is a NAT between the client and server',
+  12: 'Address mismatch: Source IP does not match the PCP client address. This may be due to an incorrect source IP (e.g. deprecated IPv6 privacy address) or NAT between the client and server',
   13: 'Excessive remote peers'
 }
+
+const log = logger('nat-port-mapper:pcp')
 
 interface Mapping {
   protocol: Protocol
@@ -79,9 +79,8 @@ interface Callback {
 export class PCPGateway extends EventEmitter implements Gateway {
   public id: string
   private readonly clientSocket: Socket
-  private readonly unicastAnnounceSocket: Socket
-  private readonly multicastAnnounceSocket: Socket
-  private queue: Array<{ op: number, buf: Uint8Array, deferred: DeferredPromise<any> }>
+  // private readonly multicastAnnounceSocket: Socket
+  private queue: Array<{ op: number, buf: Uint8Array, deferred: DeferredPromise<any>, localPort?: number, obj?: PCPMapPortOptions }>
   private connecting: boolean
   private listening: boolean
   private req: any
@@ -106,23 +105,28 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.port = SERVER_PORT
     this.family = isIPv4(gatewayIP) ? 'IPv4' : 'IPv6'
     this.id = this.host
-    this.options = options
     this.refreshIntervals = new Map()
     this.mappings = []
+    this.options = options
 
-    // TODO check ttl - might need to convert to seconds
-    // this.options.ttl = this.options.ttl / 1000
+    // PCP uses seconds for TTL
+    if (this.options?.ttl !== undefined) {
+      this.options.ttl = Math.floor(this.options.ttl / 1000)
+
+      if (this.options.ttl < MINIMUM_LIFETIME) {
+        this.options.ttl = MINIMUM_LIFETIME
+      }
+    }
 
     // TODO handle failed refresh
 
-    // unicastAnnounceSocket handles rapid restart ANNOUNCE messages from PCP server
-    this.unicastAnnounceSocket = this.newUnicastAnnounceSocket()
-
-    // multicastAnnounceSocket receives rapid restart ANNOUNCE messages from PCP server
-    this.multicastAnnounceSocket = this.newMulticastAnnounceSocket()
-
     // clientSocket sends ANNOUNCE and MAP messages and handles responses
     this.clientSocket = this.newClientSocket()
+
+    // TODO rapid recovery
+    // multicastAnnounceSocket receives restart ANNOUNCE messages from PCP server
+    // https://www.rfc-editor.org/rfc/rfc6887#section-14.1.3
+    // this.multicastAnnounceSocket = this.newMulticastAnnounceSocket()
 
     this.connect()
   }
@@ -149,49 +153,28 @@ export class PCPGateway extends EventEmitter implements Gateway {
     return socket
   }
 
-  newMulticastAnnounceSocket (): Socket {
-    let socket: Socket
-    let multicastAddr: string
-    if (this.family === 'IPv4') {
-      socket = createSocket({ type: 'udp4', reuseAddr: true })
-      multicastAddr = MULTICAST_IPV4
-    } else if (this.family === 'IPv6') {
-      socket = createSocket({ type: 'udp6', reuseAddr: true })
-      multicastAddr = MULTICASE_IPV6
-    } else {
-      throw new Error('unknown gateway address type')
-    }
-
-    socket.bind(CLIENT_PORT, () => {
-      socket.addMembership(multicastAddr)
-      log(`Socket bound to port ${CLIENT_PORT} and joined multicast group ${multicastAddr}`)
-    })
-
-    socket.on('message', (msg, rinfo) => { this.onAnnounceMessage(msg, rinfo) })
-
-    return socket
-  }
-
-  newUnicastAnnounceSocket (): Socket {
-    let socket: Socket
-    if (this.family === 'IPv4') {
-      socket = createSocket({ type: 'udp4', reuseAddr: true })
-    } else if (this.family === 'IPv6') {
-      socket = createSocket({ type: 'udp6', reuseAddr: true })
-    } else {
-      throw new Error('unknown gateway address type')
-    }
-
-    socket.bind(CLIENT_PORT)
-
-    socket.on('message', (msg, rinfo) => { this.onAnnounceMessage(msg, rinfo) })
-
-    return socket
-  }
-
-  private onAnnounceMessage (msg: Buffer, rinfo: RemoteInfo): void {
-    log('TODO onAnnounceMessage', msg, rinfo)
-  }
+  // newMulticastAnnounceSocket (): Socket {
+  //   let socket: Socket
+  //   let multicastAddr: string
+  //   if (this.family === 'IPv4') {
+  //     socket = createSocket({ type: 'udp4', reuseAddr: true })
+  //     multicastAddr = MULTICAST_IPV4
+  //   } else if (this.family === 'IPv6') {
+  //     socket = createSocket({ type: 'udp6', reuseAddr: true })
+  //     multicastAddr = MULTICASE_IPV6
+  //   } else {
+  //     throw new Error('unknown gateway address type')
+  //   }
+  //
+  //   socket.bind(CLIENT_PORT, () => {
+  //     socket.addMembership(multicastAddr)
+  //     log(`Socket bound to port ${CLIENT_PORT} and joined multicast group ${multicastAddr}`)
+  //   })
+  //
+  //   socket.on('message', (msg, rinfo) => { this.onMessage(msg, rinfo) })
+  //
+  //   return socket
+  // }
 
   connect (): void {
     log('Client#connect()')
@@ -274,17 +257,16 @@ export class PCPGateway extends EventEmitter implements Gateway {
       clientAddress: internalHost,
       publicPort: opts?.suggestedExternalPort ?? internalPort,
       publicHost: opts?.suggestedExternalAddress ?? '',
-      protocol: opts?.protocol ?? 'tcp',
+      protocol: opts?.protocol ?? 'TCP',
       ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PCP_PORT_MAPPING_TTL,
       autoRefresh: opts?.autoRefresh ?? this.options.autoRefresh ?? true,
       refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT
     }
 
     log('Client#portMapping()')
-    switch (options.protocol.toLowerCase()) {
-      case 'tcp':
-        break
-      case 'udp':
+    switch (options.protocol.toUpperCase()) {
+      case 'TCP':
+      case 'UDP':
         break
       default:
         throw new Error('"type" must be either "tcp" or "udp"')
@@ -359,7 +341,8 @@ export class PCPGateway extends EventEmitter implements Gateway {
       const opts: PCPMapPortOptions = {
         clientAddress: host,
         ttl: MINIMUM_LIFETIME,
-        autoRefresh: false
+        autoRefresh: false,
+        protocol: 'TCP'
       }
 
       let externalIp: string | undefined
@@ -411,13 +394,9 @@ export class PCPGateway extends EventEmitter implements Gateway {
       this.clientSocket.close()
     }
 
-    if (this.unicastAnnounceSocket != null) {
-      this.unicastAnnounceSocket.close()
-    }
-
-    if (this.multicastAnnounceSocket != null) {
-      this.multicastAnnounceSocket.close()
-    }
+    // if (this.multicastAnnounceSocket != null) {
+    //   this.multicastAnnounceSocket.close()
+    // }
   }
 
   private getEphemeralPort (): number {
@@ -482,6 +461,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
   private getOrCreateMapping (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
     let m = this.getMapping(internalHost, internalPort, protocol)
+
     if (m === undefined) {
       m = this.newMapping(internalHost, internalPort, protocol)
       this.mappings.push(m)
@@ -669,7 +649,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
 
     // Add it to queue
-    this.queue.push({ op, buf, deferred })
+    this.queue.push({ op, buf, deferred, localPort, obj })
 
     // Try to send next message
     this._next()
@@ -720,6 +700,23 @@ export class PCPGateway extends EventEmitter implements Gateway {
   onMessage (msg: Buffer, rinfo: RemoteInfo): void {
     log('Client#onMessage()', [msg, rinfo])
 
+    // Message handling https://www.rfc-editor.org/rfc/rfc6887#section-8.3
+    if (rinfo.address.toLowerCase() !== this.host.toLowerCase()) {
+      log(`Ignoring PCP message - not sent by configured gateway ${rinfo.address}`)
+      return
+    }
+
+    if (rinfo.port !== SERVER_PORT) {
+      log(`Ignoring PCP message - not sent from port ${SERVER_PORT}`)
+      return
+    }
+
+    // Reject messages that have invalid lengths
+    if (msg.length < 24 || msg.length > 1100 || msg.length % 4 !== 0) {
+      log(`Ignoring PCP message - invalid length ${msg.length}`)
+      return
+    }
+
     // Ignore message if we're not expecting it
     if (this.queue.length === 0) {
       return
@@ -746,10 +743,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     const req = this.queue[0]
     const parsed: any = { msg }
 
-    if (msg.length < 24) {
-      throw new Error('PCP message too short')
-    }
-
     // PCP response header layout (24 bytes)
     // https://www.rfc-editor.org/rfc/rfc6887#section-7.2
     // Byte [0]:       Version (1 byte)
@@ -765,14 +758,14 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     parsed.r = (msg.readUint8(1) >> 7) & 0x01
     if (parsed.r !== 1) {
-      cb(new Error(`"R" must be 1. Got: ${parsed.r}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+      log(`Ignoring PCP message - "R" must be 1. Got: ${parsed.r}`)
       return
     }
 
     parsed.op = msg.readUint8(1) & 0x7F
 
     if (parsed.op !== req.op) {
-      log('WARN: ignoring unexpected message opcode', parsed.op)
+      log('Ignoring PCP message - unexpected message opcode', parsed.op)
       return
     }
 
@@ -786,6 +779,8 @@ export class PCPGateway extends EventEmitter implements Gateway {
       return
     }
 
+    // skip byte 2 - reserved
+
     parsed.resultCode = msg.readUInt8(3)
     if (!(parsed.resultCode in RESULT_CODES)) {
       cb(errCode(new Error('Unsupported result code'), parsed.resultCode))
@@ -796,6 +791,8 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     // Error
     if (parsed.resultCode !== RESULT_SUCCESS) {
+      // TODO - if resultCode is UNSUPP_VERSION and PCP_VERSION is 0, client MAY fallback to NAT-PMP
+      // https://www.rfc-editor.org/rfc/rfc6887#section-9
       cb(errCode(new Error(parsed.resultMessage), parsed.resultCode))
       return
     }
@@ -809,16 +806,19 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
 
     parsed.epoch = msg.readUInt32BE(8)
+    // TODO - check epoch, trigger remap if required
+
+    // skip byte 12 - 23 - reserved
 
     // Success
     switch (req.op) {
       case OP_ANNOUNCE: {
-        // OP_ANNOUNCE has no options to decode
+        // OP_ANNOUNCE has no additional data to decode
         log('parsed', parsed)
         break
       }
       case OP_MAP: {
-        this.processPCPMapResponse(msg, parsed, cb)
+        this.processPCPMapResponse(msg, parsed, cb, req.localPort, req.obj)
         break
       }
       default: {
@@ -830,14 +830,26 @@ export class PCPGateway extends EventEmitter implements Gateway {
     cb(undefined, parsed)
   }
 
-  private processPCPMapResponse (msg: Buffer, parsed: any, cb: Callback): void {
-    if (msg.length < 36) {
-      throw new Error('PCP MAP response too short')
+  private processPCPMapResponse (msg: Buffer, parsed: any, cb: Callback, localPort?: number, obj?: PCPMapPortOptions): void {
+    // PCP MAP response layout (36 bytes) + (24 byte header)
+    // https://www.rfc-editor.org/rfc/rfc6887#section-11.1
+    // Byte [0..11]:   Mapping Nonce (12 byte)
+    // Byte [12]:      Protocol (1 byte)
+    // Byte [13..15]:  Reserved (3 bytes)
+    // Byte [16..17]:  Internal port (2 bytes)
+    // Bytes [18..19]: External port (2 bytes)
+    // Bytes [20..35]: Assigned External IP Address (16 bytes)
+
+    if (msg.length < 60) {
+      cb(new Error('PCP MAP response too short'))
+      return
     }
+
     parsed.nonce = Buffer.alloc(12, 0)
     msg.copy(parsed.nonce, 0, 24, 36)
     if (this.getMappingFromNonce(parsed.nonce) === undefined) {
       cb(new Error('Nonce not found in mappings'))
+      return
     }
 
     const protocol = msg.readUint8(36)
@@ -850,7 +862,17 @@ export class PCPGateway extends EventEmitter implements Gateway {
       return
     }
 
+    if (obj?.protocol?.toUpperCase() !== parsed.protocol.toUpperCase()) {
+      cb(new Error(`Unexpected protocol - expected: ${obj?.protocol?.toUpperCase()}, received: ${parsed.protocol.toUpperCase()}`))
+      return
+    }
+
     parsed.internalPort = msg.readUInt16BE(40)
+    if (localPort !== parsed.internalPort) {
+      cb(new Error(`Unexpected internal port - expected: ${localPort}, received: ${parsed.internalPort}`))
+      return
+    }
+
     parsed.externalPort = msg.readUInt16BE(42)
 
     parsed.externalAddress = Buffer.alloc(16, 0)
