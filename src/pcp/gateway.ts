@@ -15,11 +15,9 @@ import type { Socket, RemoteInfo } from 'dgram'
 
 const log = logger('nat-port-mapper:pcp')
 
-// Ports defined by rfc6887
+// rfc6887 definitions
 const CLIENT_PORT = 5350
 const SERVER_PORT = 5351
-
-// Version defined by rfc6887
 const PCP_VERSION = 2
 
 // Opcodes
@@ -95,9 +93,8 @@ export class PCPGateway extends EventEmitter implements Gateway {
   private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
   private mappings: Mapping[]
   private gatewayEpoch: number | undefined
-  public lastGoodIPAddress: string = ''
 
-  constructor (gateway: string, options: GlobalMapPortOptions = {}) {
+  constructor (gatewayIP: string, options: GlobalMapPortOptions = {}) {
     super()
 
     this.queue = []
@@ -105,36 +102,33 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.listening = false
     this.req = null
     this.reqActive = false
-    this.host = gateway
+    this.host = gatewayIP
     this.port = SERVER_PORT
-    this.family = isIPv4(gateway) ? 'IPv4' : 'IPv6'
+    this.family = isIPv4(gatewayIP) ? 'IPv4' : 'IPv6'
     this.id = this.host
     this.options = options
     this.refreshIntervals = new Map()
     this.mappings = []
 
+    // TODO check ttl - might need to convert to seconds
     // this.options.ttl = this.options.ttl / 1000
 
-    // unicastAnnounceSocket handles restart ANNOUNCE messages from PCP server
+    // TODO handle failed refresh
+
+    // unicastAnnounceSocket handles rapid restart ANNOUNCE messages from PCP server
     this.unicastAnnounceSocket = this.newUnicastAnnounceSocket()
 
-    // multicastAnnounceSocket receives restart ANNOUNCE messages from PCP server
+    // multicastAnnounceSocket receives rapid restart ANNOUNCE messages from PCP server
     this.multicastAnnounceSocket = this.newMulticastAnnounceSocket()
 
     // clientSocket sends ANNOUNCE and MAP messages and handles responses
     this.clientSocket = this.newClientSocket()
 
     this.connect()
+  }
 
-    this.announce()
-      .then(() => {
-        log('ANNOUNCE sent successfully')
-      })
-      .catch(err => {
-        // XXX ok to throw in the constructor?
-        log.error('Failed to send ANNOUNCE:', err)
-        throw err
-      })
+  async isPCPSupported (): Promise<void> {
+    await this.announce()
   }
 
   newClientSocket (): Socket {
@@ -203,7 +197,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     log('Client#connect()')
     if (this.connecting) return
     this.connecting = true
-    this.clientSocket.bind(0) // use a random port as per spec
+    this.clientSocket.bind(0) // use a random port https://www.rfc-editor.org/rfc/rfc6887#section-8.1
   }
 
   async * mapAll (internalPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
@@ -244,13 +238,13 @@ export class PCPGateway extends EventEmitter implements Gateway {
         autoRefresh: false
       }
 
+      const port = 0
       const deferred = defer<{ epoch: number }>()
-      this.request(OP_ANNOUNCE, deferred, 0, options)
+      this.request(OP_ANNOUNCE, deferred, port, options)
 
       try {
         const result = await raceSignal(deferred.promise, AbortSignal.timeout(3000))
         log(`PCP ANNOUNCE sent successfully using address: ${address}`)
-        this.lastGoodIPAddress = address
 
         if (this.gatewayEpoch === undefined) {
           this.gatewayEpoch = Math.floor(Date.now() / 1000) - result.epoch
@@ -304,14 +298,14 @@ export class PCPGateway extends EventEmitter implements Gateway {
     try {
       result = await raceSignal(deferred.promise, opts?.signal)
     } catch (e: any) {
-      this.deleteMappingNonce(internalHost, internalPort, options.protocol)
+      this.deleteMapping(internalHost, internalPort, options.protocol)
       throw e
     }
 
     if (options.autoRefresh) {
       const refresh = ((internalPort: number, opts: PCPMapPortOptions): void => {
         log(`refreshing port mapping for ip: ${internalHost} port: ${internalPort} protocol: ${options.protocol}`)
-        const mn = this.getMappingNonce(internalHost, internalPort, options.protocol)
+        const mn = this.getMapping(internalHost, internalPort, options.protocol)
         if (mn === undefined) {
           throw new Error('Could not find mapping to renew')
         }
@@ -342,10 +336,11 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
   }
 
-  // unmap attempts to remove a mapping. However, if the internal host has sent
-  // traffic recently (within the servers idle-timeout period), the mapping
-  // isn’t immediately deleted. Instead, the mapping’s lifetime is set to the
+  // unmap attempts to remove a mapping. However, if the host has sent traffic
+  // recently (within the servers idle-timeout period), the mapping isn’t
+  // immediately deleted. Instead, the mapping’s lifetime is set to the
   // remaining idle-timeout period.
+  // https://www.rfc-editor.org/rfc/rfc6887#section-15
   async unmap (localPort: number, opts: PCPMapPortOptions): Promise<void> {
     log('Client#portUnmapping()')
 
@@ -356,7 +351,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   // externalIP creates a short lived map to get the external IP as recommended
-  // by the spec https://www.rfc-editor.org/rfc/rfc6887#section-11.6.
+  // by https://www.rfc-editor.org/rfc/rfc6887#section-11.6.
   // It should be OK for residential NATs but CGNATs may use a pool of
   // addresses so the external address isn't guaranteed.
   async externalIp (options?: AbortOptions): Promise<string> {
@@ -370,9 +365,9 @@ export class PCPGateway extends EventEmitter implements Gateway {
       let externalIp: string | undefined
 
       try {
-        // spec suggests using discard port (9) but there may be restrictions on
-        // well-known (0-1023) ports, thus just use an ephemeral port
-        // (49152-65535) instead.
+        // https://www.rfc-editor.org/rfc/rfc6887#section-11.6 suggests using
+        // discard port (9) but there may be restrictions on well-known
+        // (0-1023) ports, so just use an ephemeral port (49152-65535) instead.
         const mapping = await this.map(this.getEphemeralPort(), host, opts)
         externalIp = mapping.externalHost
       } catch (e: any) {
@@ -452,7 +447,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     return false
   }
 
-  private newMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
+  private newMapping (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
     return {
       protocol,
       internalHost,
@@ -461,14 +456,14 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
   }
 
-  private getMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): Mapping | undefined {
-    for (const mn of this.mappings) {
+  private getMapping (internalHost: string, internalPort: number, protocol: Protocol): Mapping | undefined {
+    for (const m of this.mappings) {
       if (
-        mn.internalHost === internalHost &&
-        mn.internalPort === internalPort &&
-        mn.protocol.toLowerCase() === protocol.toLowerCase()
+        m.internalHost === internalHost &&
+        m.internalPort === internalPort &&
+        m.protocol.toLowerCase() === protocol.toLowerCase()
       ) {
-        return mn
+        return m
       }
     }
 
@@ -476,26 +471,26 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   private getMappingFromNonce (nonce: Buffer): Mapping | undefined {
-    for (const mn of this.mappings) {
-      if (mn.nonce.equals(nonce)) {
-        return mn
+    for (const m of this.mappings) {
+      if (m.nonce.equals(nonce)) {
+        return m
       }
     }
 
     return undefined
   }
 
-  private getOrCreateMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
-    let mn = this.getMappingNonce(internalHost, internalPort, protocol)
-    if (mn === undefined) {
-      mn = this.newMappingNonce(internalHost, internalPort, protocol)
-      this.mappings.push(mn)
+  private getOrCreateMapping (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
+    let m = this.getMapping(internalHost, internalPort, protocol)
+    if (m === undefined) {
+      m = this.newMapping(internalHost, internalPort, protocol)
+      this.mappings.push(m)
     }
 
-    return mn
+    return m
   }
 
-  private updateMappingNonce (internalPort: number, protocol: Protocol, nonce: Buffer, externalHost: string, externalPort: number, expiresAt: number): boolean {
+  private updateMapping (internalPort: number, protocol: Protocol, nonce: Buffer, externalHost: string, externalPort: number, expiresAt: number): boolean {
     let updated = false
 
     for (let i = 0; i < this.mappings.length; i++) {
@@ -513,7 +508,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     return updated
   }
 
-  private deleteMappingNonce (internalHost: string, internalPort: number, protocol: Protocol): void {
+  private deleteMapping (internalHost: string, internalPort: number, protocol: Protocol): void {
     this.mappings = this.mappings.filter(mn => {
       return !(
         mn.internalHost === internalHost &&
@@ -598,7 +593,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     pos = 24
 
     // Mapping nonce
-    const mappingNonce = this.getOrCreateMappingNonce(obj.clientAddress, localPort, obj.protocol)
+    const mappingNonce = this.getOrCreateMapping(obj.clientAddress, localPort, obj.protocol)
     mappingNonce.nonce.copy(buf, pos, 0, 12)
     pos += 12
 
@@ -751,6 +746,10 @@ export class PCPGateway extends EventEmitter implements Gateway {
     const req = this.queue[0]
     const parsed: any = { msg }
 
+    if (msg.length < 24) {
+      throw new Error('PCP message too short')
+    }
+
     // PCP response header layout (24 bytes)
     // https://www.rfc-editor.org/rfc/rfc6887#section-7.2
     // Byte [0]:       Version (1 byte)
@@ -832,6 +831,9 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   private processPCPMapResponse (msg: Buffer, parsed: any, cb: Callback): void {
+    if (msg.length < 36) {
+      throw new Error('PCP MAP response too short')
+    }
     parsed.nonce = Buffer.alloc(12, 0)
     msg.copy(parsed.nonce, 0, 24, 36)
     if (this.getMappingFromNonce(parsed.nonce) === undefined) {
@@ -854,7 +856,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     parsed.externalAddress = Buffer.alloc(16, 0)
     msg.copy(parsed.externalAddress, 0, 44, 60)
 
-    const updated = this.updateMappingNonce(parsed.internalPort, parsed.protocol, parsed.nonce, parsed.externalAddress, parsed.externalPort, (Math.floor(Date.now() / 1000) + parsed.lifetime) * 1000)
+    const updated = this.updateMapping(parsed.internalPort, parsed.protocol, parsed.nonce, parsed.externalAddress, parsed.externalPort, (Math.floor(Date.now() / 1000) + parsed.lifetime) * 1000)
     if (!updated) {
       cb(new Error(`Could not find mapping for ${parsed.internalPort}, ${parsed.type}, ${parsed.nonce.toString('hex')}`))
       return

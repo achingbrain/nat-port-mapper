@@ -2,7 +2,7 @@
  * @packageDocumentation
  *
  * Enable NAT traversal by mapping public ports to ports on your computer using
- * either [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play,)
+ * either [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play),
  * [NAT-PMP](https://en.wikipedia.org/wiki/NAT_Port_Mapping_Protocol) or
  * [PCP](https://en.wikipedia.org/wiki/Port_Control_Protocol).
  *
@@ -120,7 +120,7 @@
  * - <https://www.rfc-editor.org/rfc/rfc6887>
  */
 
-import { PCPGateway } from './pcp/gateway.js'
+import { PCPNATClient } from './pcp/index.js'
 import { PMPGateway } from './pmp/gateway.js'
 import { UPnPClient } from './upnp/index.js'
 import type { AbortOptions } from 'abort-error'
@@ -361,9 +361,16 @@ export function pmpNat (ipAddress: string, options: GlobalMapPortOptions = {}): 
   return new PMPGateway(ipAddress, options)
 }
 
+export interface PCPNAT {
+  /**
+   * Use a specific network gateway for port mapping
+   */
+  getGateway (options?: AbortOptions): Promise <Gateway>
+}
+
 /**
  * Create a PCP port mapper
  */
-export function pcp (ipAddress: string, options: GlobalMapPortOptions = {}): Gateway {
-  return new PCPGateway(ipAddress, options)
+export function pcpNat (ipAddress: string, options: GlobalMapPortOptions = {}): PCPNAT {
+  return new PCPNATClient(ipAddress, options)
 }

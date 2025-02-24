@@ -1,8 +1,9 @@
 import { assert, expect } from 'aegir/chai'
-import { pcp } from '../src/index.js'
+import { pcpNat } from '../src/index.js'
 import { randomPort } from './fixtures/random-port.js'
 import type { Gateway } from '../src/index.js'
 import type { PCPGateway } from '../src/pcp/gateway.js'
+// import type { PCPNATClient } from '../src/pcp/index.js'
 
 // Helper to wait until at least one mapping has expiresAt > 2 minutes from now
 async function waitForRefreshedMapping (
@@ -47,7 +48,10 @@ describe('pcp-nat-port-mapper', () => {
   let gateway: Gateway
 
   afterEach(async () => {
-    await gateway?.stop()
+    try {
+      await gateway?.stop()
+    } catch {
+    }
   })
 
   it('should map a port', async () => {
@@ -63,7 +67,7 @@ describe('pcp-nat-port-mapper', () => {
     const mapped = []
 
     try {
-      gateway = pcp(process.env.GATEWAY)
+      gateway = await pcpNat(process.env.GATEWAY).getGateway()
     } catch (err: any) {
       assert.fail(`Gateway initialization failed: ${err.message}`)
     }
@@ -91,20 +95,53 @@ describe('pcp-nat-port-mapper', () => {
 
   it('should discover an external ip address', async () => {
     if (process.env.CI != null) {
-      return // CI environments don't have NAT-PMP routers!
+      return // CI environments don't have PCP routers!
     }
 
     if (process.env.GATEWAY === undefined) {
       throw new Error('GATEWAY env not set')
     }
 
-    gateway = pcp(process.env.GATEWAY)
+    gateway = await pcpNat(process.env.GATEWAY).getGateway()
 
     const ip = await gateway.externalIp({
       signal: AbortSignal.timeout(5000)
     })
 
     expect(ip).to.be.ok()
+  })
+
+  it('should detect if the gateway supports PCP', async () => {
+    if (process.env.CI != null) {
+      return // CI environments don't have PCP routers!
+    }
+
+    if (process.env.GATEWAY === undefined) {
+      throw new Error('GATEWAY env not set')
+    }
+
+    try {
+      gateway = await pcpNat(process.env.GATEWAY).getGateway()
+    } catch (err: any) {
+      assert.fail(`Gateway initialization failed: ${err.message}`)
+    }
+
+    expect(gateway).to.be.ok()
+  })
+
+  it('should fail if the gateway is not found', async () => {
+    if (process.env.CI != null) {
+      return // CI environments don't have PCP routers!
+    }
+
+    try {
+      gateway = await pcpNat('127.0.0.2').getGateway()
+    } catch (err: any) {
+      expect(err.message).to.contain('No PCP server found')
+      return
+    }
+
+    assert.fail('Should have thrown')
   })
 
   it('should refresh a mapping', async () => {
@@ -119,7 +156,7 @@ describe('pcp-nat-port-mapper', () => {
     const port = randomPort()
     const mapped = []
 
-    gateway = pcp(process.env.GATEWAY)
+    gateway = await pcpNat(process.env.GATEWAY).getGateway()
 
     const ttl = 120 // minimum TTL as per PCP spec
     for await (const mapping of gateway.mapAll(port, { ttl })) {

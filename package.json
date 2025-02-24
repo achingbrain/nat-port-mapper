@@ -25,7 +25,8 @@
     "nat-pmp",
     "pmp",
     "port",
-    "upnp"
+    "upnp",
+    "pcp"
   ],
   "type": "module",
   "types": "./dist/src/index.d.ts",
