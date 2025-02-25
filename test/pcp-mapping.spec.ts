@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { Mappings } from '../src/pcp/mappings.js'
 import type { Protocol } from '../src/index.js'
 
-describe('PCP Mapping', () => {
+describe('pcp-mapping', () => {
   let mappings: Mappings
 
   beforeEach(() => {
