@@ -114,6 +114,180 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.connect()
   }
 
+  public async * mapAll (internalPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
+    let mapped = false
+
+    for (const host of findLocalAddresses(this.family)) {
+      try {
+        log('mapping host', host)
+        options.internalAddress = host
+        const mapping = await this.map(internalPort, host, options)
+        mapped = true
+
+        yield mapping
+      } catch (err) {
+        log.error('error mapping %s:%d - %e', host, internalPort, err)
+      }
+    }
+
+    if (!mapped) {
+      throw new Error(`All attempts to map port ${internalPort} failed`)
+    }
+  }
+
+  public async map (internalPort: number, internalHost: string, opts: PCPMapPortOptions): Promise<PortMapping> {
+    const options = {
+      internalAddress: internalHost,
+      publicPort: opts?.suggestedExternalPort ?? internalPort,
+      publicHost: opts?.suggestedExternalAddress ?? '',
+      protocol: opts?.protocol ?? 'TCP',
+      ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PCP_PORT_MAPPING_TTL,
+      autoRefresh: opts?.autoRefresh ?? this.options.autoRefresh ?? true,
+      refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT
+    }
+
+    log('Client#portMapping()')
+    switch (options.protocol.toUpperCase()) {
+      case 'TCP':
+      case 'UDP':
+        break
+      default:
+        throw new Error('"type" must be either "tcp" or "udp"')
+    }
+
+    const deferred = defer<{ resultCode: number, internalHost: string, internalPort: number, externalAddress: string, externalPort: number, lifetime: number, protocol: 'TCP' | 'UDP' }>()
+
+    this.request(OP_MAP, deferred, internalPort, options)
+
+    let result
+    try {
+      result = await raceSignal(deferred.promise, opts?.signal)
+    } catch (e: any) {
+      this.mappings.delete(internalHost, internalPort, options.protocol)
+      throw e
+    }
+
+    return {
+      externalHost: isPrivateIp(internalHost) === true ? await this.externalIp(opts) : internalHost,
+      externalPort: result.externalPort,
+      internalHost,
+      internalPort: result.internalPort,
+      protocol: result.protocol
+    }
+  }
+
+  // unmap attempts to remove a mapping. However, if the host has sent traffic
+  // recently (within the servers idle-timeout period), the mapping isn’t
+  // immediately deleted. Instead, the mapping’s lifetime is set to the
+  // remaining idle-timeout period.
+  // https://www.rfc-editor.org/rfc/rfc6887#section-15
+  public async unmap (localPort: number, opts: PCPMapPortOptions): Promise<void> {
+    log('Client#portUnmapping()')
+
+    await this.map(localPort, opts.internalAddress, {
+      ...opts,
+      autoRefresh: false,
+      ttl: 0
+    })
+  }
+
+  // remap attempts to remap all mappings - runs when a PCP servers epoch
+  // changes, e.g. after the PCP server reboots or its public IP changes
+  public async remap (): Promise<void> {
+    log('Client#remap()')
+
+    try {
+      await Promise.allSettled(this.mappings.getAll().map(async (m) => {
+        const opts: PCPMapPortOptions = {
+          internalAddress: m.internalHost,
+          suggestedExternalAddress: m.externalHost,
+          suggestedExternalPort: m.externalPort,
+          protocol: m.protocol,
+          autoRefresh: m.autoRefresh
+        }
+
+        return this.map(m.internalPort, m.internalHost, opts)
+      }))
+    } catch (e) {
+      log('Could not remap', e)
+    }
+  }
+
+  public getMappings (): Mapping[] {
+    return this.mappings.getAll()
+  }
+
+  // externalIp creates a short lived map to get the external IP as per
+  // https://www.rfc-editor.org/rfc/rfc6887#section-11.6.
+  // It should be OK for residential NATs but CGNATs may use a pool of
+  // addresses so the external address isn't guaranteed.
+  public async externalIp (options?: AbortOptions): Promise<string> {
+    for (const host of findLocalAddresses(this.family)) {
+      const opts: PCPMapPortOptions = {
+        internalAddress: host,
+        ttl: MINIMUM_LIFETIME,
+        autoRefresh: false,
+        protocol: 'TCP',
+        ...options
+      }
+
+      let externalIp: string | undefined
+
+      try {
+        // https://www.rfc-editor.org/rfc/rfc6887#section-11.6 suggests using
+        // discard port (9) but there may be restrictions on well-known
+        // (0-1023) ports, so just use an ephemeral port (49152-65535) instead.
+        const mapping = await this.map(this.getEphemeralPort(), host, opts)
+        externalIp = mapping.externalHost
+      } catch (e: any) {
+        log(e)
+      }
+
+      if (externalIp !== undefined) {
+        return externalIp
+      }
+    }
+
+    throw new Error('Could not lookup external IP')
+  }
+
+  public async isPCPSupported (): Promise<void> {
+    await this.announce()
+  }
+
+  public async stop (options?: AbortOptions): Promise<void> {
+    log('Client#close()')
+
+    if (this.autoRefresher !== undefined) {
+      clearInterval(this.autoRefresher)
+    }
+
+    this.queue = []
+
+    try {
+      await Promise.allSettled(this.mappings.getAll().map(async (m) => {
+        const opts: PCPMapPortOptions = {
+          internalAddress: m.internalHost,
+          ...options
+        }
+        return this.unmap(m.internalPort, opts)
+      }))
+    } catch (e) {
+      log('Could not unmap on close', e)
+    }
+
+    this.queue = []
+    this.connecting = false
+    this.listening = false
+    this.req = null
+    this.reqActive = false
+    this.mappings.deleteAll()
+
+    if (this.clientSocket != null) {
+      this.clientSocket.close()
+    }
+  }
+
   private newClientSocket (): Socket {
     let socket: Socket
     if (this.family === 'IPv4') {
@@ -302,239 +476,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     cb(undefined, parsed)
   }
 
-  public async isPCPSupported (): Promise<void> {
-    await this.announce()
-  }
-
-  public async * mapAll (internalPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
-    let mapped = false
-
-    for (const host of findLocalAddresses(this.family)) {
-      try {
-        log('mapping host', host)
-        options.internalAddress = host
-        const mapping = await this.map(internalPort, host, options)
-        mapped = true
-
-        yield mapping
-      } catch (err) {
-        log.error('error mapping %s:%d - %e', host, internalPort, err)
-      }
-    }
-
-    if (!mapped) {
-      throw new Error(`All attempts to map port ${internalPort} failed`)
-    }
-  }
-
-  // announce sends a PCP ANNOUNCE message to the gateway device.
-  // This is used to determine:
-  //   - if the gateway supports PCP
-  //   - the gateway epoch
-  private async announce (): Promise<void> {
-    log('Sending client PCP ANNOUNCE message')
-    let success = false
-
-    const addresses = findLocalAddresses(this.family)
-    for (const address of addresses) {
-      log('Announcing with address: ', address)
-      const options: PCPMapPortOptions = {
-        internalAddress: address,
-        ttl: 0,
-        autoRefresh: false
-      }
-
-      const port = 0
-      const deferred = defer<{ epoch: number }>()
-      this.request(OP_ANNOUNCE, deferred, port, options)
-
-      try {
-        await raceSignal(deferred.promise, AbortSignal.timeout(3000))
-        log(`PCP ANNOUNCE sent successfully using address: ${address}`)
-
-        success = true
-        break
-      } catch (err) {
-        log.error(`Failed to send client PCP ANNOUNCE using address ${address}: %e`, err)
-        continue
-      }
-    }
-
-    if (!success) {
-      throw new Error('No PCP server found')
-    }
-  }
-
-  public async map (internalPort: number, internalHost: string, opts: PCPMapPortOptions): Promise<PortMapping> {
-    const options = {
-      internalAddress: internalHost,
-      publicPort: opts?.suggestedExternalPort ?? internalPort,
-      publicHost: opts?.suggestedExternalAddress ?? '',
-      protocol: opts?.protocol ?? 'TCP',
-      ttl: opts?.ttl ?? this.options.ttl ?? DEFAULT_PCP_PORT_MAPPING_TTL,
-      autoRefresh: opts?.autoRefresh ?? this.options.autoRefresh ?? true,
-      refreshTimeout: opts?.refreshTimeout ?? this.options.refreshTimeout ?? DEFAULT_REFRESH_TIMEOUT
-    }
-
-    log('Client#portMapping()')
-    switch (options.protocol.toUpperCase()) {
-      case 'TCP':
-      case 'UDP':
-        break
-      default:
-        throw new Error('"type" must be either "tcp" or "udp"')
-    }
-
-    const deferred = defer<{ resultCode: number, internalHost: string, internalPort: number, externalAddress: string, externalPort: number, lifetime: number, protocol: 'TCP' | 'UDP' }>()
-
-    this.request(OP_MAP, deferred, internalPort, options)
-
-    let result
-    try {
-      result = await raceSignal(deferred.promise, opts?.signal)
-    } catch (e: any) {
-      this.mappings.delete(internalHost, internalPort, options.protocol)
-      throw e
-    }
-
-    // if (options.autoRefresh) {
-    //   const refresh = ((internalPort: number, opts: PCPMapPortOptions): void => {
-    //     log(`refreshing port mapping for ip: ${internalHost} port: ${internalPort} protocol: ${options.protocol}`)
-    //     const mn = this.mappings.get(internalHost, internalPort, options.protocol)
-    //     if (mn === undefined) {
-    //       throw new Error('Could not find mapping to renew')
-    //     }
-    //
-    //     opts.suggestedExternalAddress = mn.externalHost
-    //     opts.suggestedExternalPort = mn.externalPort
-    //     this.map(internalPort, internalHost, {
-    //       ...opts,
-    //       signal: AbortSignal.timeout(options.refreshTimeout)
-    //     })
-    //       .catch(err => {
-    //         log.error('could not refresh port mapping - %e', err)
-    //       })
-    //   }).bind(this, internalPort, {
-    //     ...options,
-    //     signal: undefined
-    //   })
-    //
-    //   this.refreshIntervals.set(internalPort, setTimeout(refresh, (result.lifetime / 2) * 1000))
-    // }
-
-    return {
-      externalHost: isPrivateIp(internalHost) === true ? await this.externalIp(opts) : internalHost,
-      externalPort: result.externalPort,
-      internalHost,
-      internalPort: result.internalPort,
-      protocol: result.protocol
-    }
-  }
-
-  // unmap attempts to remove a mapping. However, if the host has sent traffic
-  // recently (within the servers idle-timeout period), the mapping isn’t
-  // immediately deleted. Instead, the mapping’s lifetime is set to the
-  // remaining idle-timeout period.
-  // https://www.rfc-editor.org/rfc/rfc6887#section-15
-  public async unmap (localPort: number, opts: PCPMapPortOptions): Promise<void> {
-    log('Client#portUnmapping()')
-
-    await this.map(localPort, opts.internalAddress, {
-      ...opts,
-      autoRefresh: false,
-      ttl: 0
-    })
-  }
-
-  // remap attempts to remap all mappings - runs when a PCP servers epoch
-  // changes, e.g. after the PCP server reboots or its public IP changes
-  public async remap (): Promise<void> {
-    log('Client#remap()')
-
-    try {
-      await Promise.allSettled(this.mappings.getAll().map(async (m) => {
-        const opts: PCPMapPortOptions = {
-          internalAddress: m.internalHost,
-          suggestedExternalAddress: m.externalHost,
-          suggestedExternalPort: m.externalPort,
-          protocol: m.protocol,
-          autoRefresh: m.autoRefresh
-        }
-
-        return this.map(m.internalPort, m.internalHost, opts)
-      }))
-    } catch (e) {
-      log('Could not remap', e)
-    }
-  }
-
-  // externalIP creates a short lived map to get the external IP as per
-  // https://www.rfc-editor.org/rfc/rfc6887#section-11.6.
-  // It should be OK for residential NATs but CGNATs may use a pool of
-  // addresses so the external address isn't guaranteed.
-  public async externalIp (options?: AbortOptions): Promise<string> {
-    for (const host of findLocalAddresses(this.family)) {
-      const opts: PCPMapPortOptions = {
-        internalAddress: host,
-        ttl: MINIMUM_LIFETIME,
-        autoRefresh: false,
-        protocol: 'TCP',
-        ...options
-      }
-
-      let externalIp: string | undefined
-
-      try {
-        // https://www.rfc-editor.org/rfc/rfc6887#section-11.6 suggests using
-        // discard port (9) but there may be restrictions on well-known
-        // (0-1023) ports, so just use an ephemeral port (49152-65535) instead.
-        const mapping = await this.map(this.getEphemeralPort(), host, opts)
-        externalIp = mapping.externalHost
-      } catch (e: any) {
-        log(e)
-      }
-
-      if (externalIp !== undefined) {
-        return externalIp
-      }
-    }
-
-    throw new Error('Could not lookup external IP')
-  }
-
-  public async stop (options?: AbortOptions): Promise<void> {
-    log('Client#close()')
-
-    if (this.autoRefresher !== undefined) {
-      clearInterval(this.autoRefresher)
-    }
-
-    this.queue = []
-
-    try {
-      await Promise.allSettled(this.mappings.getAll().map(async (m) => {
-        const opts: PCPMapPortOptions = {
-          internalAddress: m.internalHost,
-          ...options
-        }
-        return this.unmap(m.internalPort, opts)
-      }))
-    } catch (e) {
-      log('Could not unmap on close', e)
-    }
-
-    this.queue = []
-    this.connecting = false
-    this.listening = false
-    this.req = null
-    this.reqActive = false
-    this.mappings.deleteAll()
-
-    if (this.clientSocket != null) {
-      this.clientSocket.close()
-    }
-  }
-
   private newPCPRequestHeader (clientIP: string, ttl: number, opcode: number): Buffer {
     // PCP request header layout (24 bytes):
     // https://www.rfc-editor.org/rfc/rfc6887#section-7.1
@@ -717,6 +658,44 @@ export class PCPGateway extends EventEmitter implements Gateway {
     log('parsed', parsed)
   }
 
+  // announce sends a PCP ANNOUNCE message to the gateway device.
+  // This is used to determine:
+  //   - if the gateway supports PCP
+  //   - the gateway epoch
+  private async announce (): Promise<void> {
+    log('Sending client PCP ANNOUNCE message')
+    let success = false
+
+    const addresses = findLocalAddresses(this.family)
+    for (const address of addresses) {
+      log('Announcing with address: ', address)
+      const options: PCPMapPortOptions = {
+        internalAddress: address,
+        ttl: 0,
+        autoRefresh: false
+      }
+
+      const port = 0
+      const deferred = defer<{ epoch: number }>()
+      this.request(OP_ANNOUNCE, deferred, port, options)
+
+      try {
+        await raceSignal(deferred.promise, AbortSignal.timeout(3000))
+        log(`PCP ANNOUNCE sent successfully using address: ${address}`)
+
+        success = true
+        break
+      } catch (err) {
+        log.error(`Failed to send client PCP ANNOUNCE using address ${address}: %e`, err)
+        continue
+      }
+    }
+
+    if (!success) {
+      throw new Error('No PCP server found')
+    }
+  }
+
   /**
    * Queues a UDP request to be sent to the gateway device.
    */
@@ -787,10 +766,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.clientSocket.send(buf, 0, buf.length, SERVER_PORT, this.host)
   }
 
-  public getMappings (): Mapping[] {
-    return this.mappings.getAll()
-  }
-
   // refresher runs every REFRESH_INTERVAL seconds to renew mappings that are
   // expiring. We slightly deviate from the SHOULD spec here and just run a
   // single refresh function for all expiring mapping. It simplifies clean up
@@ -820,7 +795,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
         })
       )
     } catch (e) {
-      log('Could not remap', e)
+      log('Could not refresh', e)
     }
   }
 
