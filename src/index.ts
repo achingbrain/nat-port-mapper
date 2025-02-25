@@ -150,7 +150,7 @@ export interface GlobalMapPortOptions {
   autoRefresh?: boolean
 
   /**
-   * How long to wait while trying to refresh a port mapping in ms
+   * How long to wait while trying to refresh a port mapping in ms - not used by PCP
    *
    * @default 10_000
    */
@@ -190,7 +190,10 @@ export interface MapPortOptions extends GlobalMapPortOptions, AbortOptions {
 }
 
 export interface PCPMapPortOptions extends GlobalMapPortOptions, AbortOptions {
-  clientAddress: string
+  /**
+   * The internal IP address of the host - IPv4 or IPv6
+   */
+  internalAddress: string
 
   /**
    * The suggested external port to map - best effort as may already be mapped on the PCP server to a different client

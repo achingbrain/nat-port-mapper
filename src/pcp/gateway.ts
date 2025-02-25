@@ -21,7 +21,7 @@ const PCP_VERSION = 2
 // Opcodes
 const OP_ANNOUNCE = 0
 const OP_MAP = 1
-// const OP_PEER = 2 // unsupported
+// const OP_PEER = 2
 
 // Bits
 const RESERVED_BIT = 0
@@ -30,12 +30,10 @@ const RESERVED_BIT = 0
 const PROTO_TCP = 0x06
 const PROTO_UDP = 0x11
 
-// const MULTICAST_IPV4 = '224.0.0.1'
-// const MULTICASE_IPV6 = 'ff02:0000:0000:0000:0000:0000:0000:0001'
 const EMPTY_IPV4 = '0.0.0.0'
 const EMPTY_IPV6 = '0000:0000:0000:0000:0000:0000:0000:0000'
-const MINIMUM_LIFETIME = 120
 
+const MINIMUM_LIFETIME = 120 // seconds
 const DEFAULT_PCP_PORT_MAPPING_TTL = 60 * 60 // 1 hour
 
 // EPOCH_DRIFT in seconds to account for clock drift
@@ -45,8 +43,8 @@ const EPOCH_DRIFT = 10
 const RESULT_SUCCESS = 0
 const RESULT_CODES: Record<number, string> = {
   0: 'Success',
-  1: 'Unsupported Version', // generally indicates that the client should fall back to using NAT-PMP
-  2: 'Not Authorized/Refused (gateway may have NAT-PCP disabled)',
+  1: 'Unsupported version', // generally indicates that the client should fall back to using NAT-PMP
+  2: 'Not authorized - gateway may have PCP disabled',
   3: 'Malformed request',
   4: 'Unsupported opcode',
   5: 'Unsupported option',
@@ -79,7 +77,6 @@ interface Callback {
 export class PCPGateway extends EventEmitter implements Gateway {
   public id: string
   private readonly clientSocket: Socket
-  // private readonly multicastAnnounceSocket: Socket
   private queue: Array<{ op: number, buf: Uint8Array, deferred: DeferredPromise<any>, localPort?: number, obj?: PCPMapPortOptions }>
   private connecting: boolean
   private listening: boolean
@@ -91,7 +88,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
   private readonly options: GlobalMapPortOptions
   private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
   private mappings: Mapping[]
-  private gatewayEpoch: number | undefined
+  private gatewayEpoch: number | undefined // Unix timestamp in seconds of when the PCP server was started
 
   constructor (gatewayIP: string, options: GlobalMapPortOptions = {}) {
     super()
@@ -109,7 +106,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.mappings = []
     this.options = options
 
-    // PCP uses seconds for TTL
+    // PCP uses seconds for its TTL
     if (this.options?.ttl !== undefined) {
       this.options.ttl = Math.floor(this.options.ttl / 1000)
 
@@ -122,11 +119,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     // clientSocket sends ANNOUNCE and MAP messages and handles responses
     this.clientSocket = this.newClientSocket()
-
-    // TODO rapid recovery
-    // multicastAnnounceSocket receives restart ANNOUNCE messages from PCP server
-    // https://www.rfc-editor.org/rfc/rfc6887#section-14.1.3
-    // this.multicastAnnounceSocket = this.newMulticastAnnounceSocket()
 
     this.connect()
   }
@@ -153,29 +145,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     return socket
   }
 
-  // newMulticastAnnounceSocket (): Socket {
-  //   let socket: Socket
-  //   let multicastAddr: string
-  //   if (this.family === 'IPv4') {
-  //     socket = createSocket({ type: 'udp4', reuseAddr: true })
-  //     multicastAddr = MULTICAST_IPV4
-  //   } else if (this.family === 'IPv6') {
-  //     socket = createSocket({ type: 'udp6', reuseAddr: true })
-  //     multicastAddr = MULTICASE_IPV6
-  //   } else {
-  //     throw new Error('unknown gateway address type')
-  //   }
-  //
-  //   socket.bind(CLIENT_PORT, () => {
-  //     socket.addMembership(multicastAddr)
-  //     log(`Socket bound to port ${CLIENT_PORT} and joined multicast group ${multicastAddr}`)
-  //   })
-  //
-  //   socket.on('message', (msg, rinfo) => { this.onMessage(msg, rinfo) })
-  //
-  //   return socket
-  // }
-
   connect (): void {
     log('Client#connect()')
     if (this.connecting) return
@@ -189,7 +158,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     for (const host of findLocalAddresses(this.family)) {
       try {
         log('mapping host', host)
-        options.clientAddress = host
+        options.internalAddress = host
         const mapping = await this.map(internalPort, host, options)
         mapped = true
 
@@ -216,7 +185,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     for (const address of addresses) {
       log('Announcing with address: ', address)
       const options: PCPMapPortOptions = {
-        clientAddress: address,
+        internalAddress: address,
         ttl: 0,
         autoRefresh: false
       }
@@ -226,18 +195,8 @@ export class PCPGateway extends EventEmitter implements Gateway {
       this.request(OP_ANNOUNCE, deferred, port, options)
 
       try {
-        const result = await raceSignal(deferred.promise, AbortSignal.timeout(3000))
+        await raceSignal(deferred.promise, AbortSignal.timeout(3000))
         log(`PCP ANNOUNCE sent successfully using address: ${address}`)
-
-        if (this.gatewayEpoch === undefined) {
-          this.gatewayEpoch = Math.floor(Date.now() / 1000) - result.epoch
-        } else {
-          if (this.hasEpochChanged(result.epoch)) {
-            // todo remap all ports
-          }
-
-          this.gatewayEpoch = result.epoch
-        }
 
         success = true
         break
@@ -254,7 +213,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
   async map (internalPort: number, internalHost: string, opts: PCPMapPortOptions): Promise<PortMapping> {
     const options = {
-      clientAddress: internalHost,
+      internalAddress: internalHost,
       publicPort: opts?.suggestedExternalPort ?? internalPort,
       publicHost: opts?.suggestedExternalAddress ?? '',
       protocol: opts?.protocol ?? 'TCP',
@@ -326,23 +285,44 @@ export class PCPGateway extends EventEmitter implements Gateway {
   async unmap (localPort: number, opts: PCPMapPortOptions): Promise<void> {
     log('Client#portUnmapping()')
 
-    await this.map(localPort, opts.clientAddress, {
+    await this.map(localPort, opts.internalAddress, {
       ...opts,
       ttl: 0
     })
   }
 
-  // externalIP creates a short lived map to get the external IP as recommended
-  // by https://www.rfc-editor.org/rfc/rfc6887#section-11.6.
+  public async remap (): Promise<void> {
+    log('Client#remap()')
+
+    try {
+      await Promise.allSettled(this.getMappings().map(async (m) => {
+        const opts: PCPMapPortOptions = {
+          internalAddress: m.internalHost,
+          suggestedExternalAddress: m.externalHost,
+          suggestedExternalPort: m.externalPort,
+          protocol: m.protocol,
+          autoRefresh: true
+        }
+
+        return this.map(m.internalPort, m.internalHost, opts)
+      }))
+    } catch (e) {
+      log('Could not remap', e)
+    }
+  }
+
+  // externalIP creates a short lived map to get the external IP as per
+  // https://www.rfc-editor.org/rfc/rfc6887#section-11.6.
   // It should be OK for residential NATs but CGNATs may use a pool of
   // addresses so the external address isn't guaranteed.
   async externalIp (options?: AbortOptions): Promise<string> {
     for (const host of findLocalAddresses(this.family)) {
       const opts: PCPMapPortOptions = {
-        clientAddress: host,
+        internalAddress: host,
         ttl: MINIMUM_LIFETIME,
         autoRefresh: false,
-        protocol: 'TCP'
+        protocol: 'TCP',
+        ...options
       }
 
       let externalIp: string | undefined
@@ -368,35 +348,37 @@ export class PCPGateway extends EventEmitter implements Gateway {
   async stop (options?: AbortOptions): Promise<void> {
     log('Client#close()')
 
-    this.queue = []
-    this.connecting = false
-    this.listening = false
-    this.req = null
-    this.reqActive = false
-
-    // TODO
-    // await Promise.all([...this.refreshIntervals.entries()].map(async ([port, timeout]) => {
-    //   clearTimeout(timeout)
-    //   const opts = {
-    //     clientAddress: '', // TODO
-    //     ...options
-    //   }
-    //   await this.unmap(port, opts)
-    // }))
-
     // Cancel all refresh timeouts
     for (const timeout of this.refreshIntervals.values()) {
       clearTimeout(timeout)
     }
     this.refreshIntervals.clear()
 
+    // clear pending requests
+    this.queue = []
+
+    try {
+      await Promise.allSettled(this.getMappings().map(async (m) => {
+        const opts: PCPMapPortOptions = {
+          internalAddress: m.internalHost,
+          autoRefresh: false,
+          ...options
+        }
+        return this.unmap(m.internalPort, opts)
+      }))
+    } catch (e) {
+      log('Could not unmap on close', e)
+    }
+
+    this.queue = []
+    this.connecting = false
+    this.listening = false
+    this.req = null
+    this.reqActive = false
+
     if (this.clientSocket != null) {
       this.clientSocket.close()
     }
-
-    // if (this.multicastAnnounceSocket != null) {
-    //   this.multicastAnnounceSocket.close()
-    // }
   }
 
   private getEphemeralPort (): number {
@@ -405,6 +387,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     return Math.floor(Math.random() * (max - min + 1)) + min
   }
 
+  // epoch is the number of seconds since the PCP server has started
   private hasEpochChanged (epoch: number): boolean {
     if (this.gatewayEpoch === undefined) {
       return false
@@ -567,13 +550,13 @@ export class PCPGateway extends EventEmitter implements Gateway {
     const size = 24 + 36 // PCP header + MAP op
     const buf = Buffer.alloc(size)
 
-    const header = this.newPCPRequestHeader(obj.clientAddress, ttl, OP_MAP)
+    const header = this.newPCPRequestHeader(obj.internalAddress, ttl, OP_MAP)
 
     header.copy(buf, pos, 0, 24)
     pos = 24
 
     // Mapping nonce
-    const mappingNonce = this.getOrCreateMapping(obj.clientAddress, localPort, obj.protocol)
+    const mappingNonce = this.getOrCreateMapping(obj.internalAddress, localPort, obj.protocol)
     mappingNonce.nonce.copy(buf, pos, 0, 12)
     pos += 12
 
@@ -607,7 +590,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     if (obj.suggestedExternalAddress !== undefined && obj.suggestedExternalAddress !== null) {
       suggestedIP = parseIP(obj.suggestedExternalAddress, true)
     } else {
-      if (isIPv4(obj.clientAddress)) {
+      if (isIPv4(obj.internalAddress)) {
         suggestedIP = parseIP(EMPTY_IPV4, true)
       } else {
         suggestedIP = parseIP(EMPTY_IPV6, true)
@@ -624,7 +607,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
   }
 
   private pcpRequestANNOUNCEPacket (obj: PCPMapPortOptions): Buffer {
-    return this.newPCPRequestHeader(obj.clientAddress, 0, OP_ANNOUNCE)
+    return this.newPCPRequestHeader(obj.internalAddress, 0, OP_ANNOUNCE)
   }
 
   /**
@@ -788,8 +771,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
 
     parsed.resultMessage = RESULT_CODES[parsed.resultCode]
-
-    // Error
     if (parsed.resultCode !== RESULT_SUCCESS) {
       // TODO - if resultCode is UNSUPP_VERSION and PCP_VERSION is 0, client MAY fallback to NAT-PMP
       // https://www.rfc-editor.org/rfc/rfc6887#section-9
@@ -798,15 +779,18 @@ export class PCPGateway extends EventEmitter implements Gateway {
     }
 
     parsed.lifetime = msg.readUInt32BE(4)
+    // Check for large lifetimes, https://www.rfc-editor.org/rfc/rfc6887#section-15
     if (parsed.lifetime > 24 * 60 * 60) {
-      // RFC6887 Section 15 https://www.rfc-editor.org/rfc/rfc6887#section-15
-      // Set lifetime to 24 hours if larger
-      log(`WARN: PCP server allocated a ${parsed.lifetime}s lifetime which is larger 24 hours, setting to 24 hours`)
+      log(`PCP server allocated a ${parsed.lifetime}s lifetime which is larger 24 hours, setting to 24 hours`)
       parsed.lifetime = 24 * 60 * 60
     }
 
     parsed.epoch = msg.readUInt32BE(8)
-    // TODO - check epoch, trigger remap if required
+    if (this.hasEpochChanged(parsed.epoch)) {
+      void this.remap()
+    }
+
+    this.gatewayEpoch = Math.floor(Date.now() / 1000) - parsed.epoch
 
     // skip byte 12 - 23 - reserved
 

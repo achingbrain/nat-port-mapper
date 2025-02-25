@@ -4,6 +4,7 @@ import { randomPort } from './fixtures/random-port.js'
 import type { Gateway } from '../src/index.js'
 import type { PCPGateway } from '../src/pcp/gateway.js'
 // import type { PCPNATClient } from '../src/pcp/index.js'
+// import type { PCPNATClient } from '../src/pcp/index.js'
 
 // Helper to wait until at least one mapping has expiresAt > 2 minutes from now
 async function waitForRefreshedMapping (
@@ -85,12 +86,6 @@ describe('pcp-nat-port-mapper', () => {
 
     // Ensure that we got at least one successful mapping
     expect(mapped).to.have.lengthOf.at.least(1)
-
-    await new Promise<void>((resolve) => {
-      setTimeout(() => {
-        resolve()
-      }, 5000)
-    })
   })
 
   it('should discover an external ip address', async () => {
@@ -176,4 +171,45 @@ describe('pcp-nat-port-mapper', () => {
     const maxWaitMs = 2.5 * 60 * 1000
     expect(await waitForRefreshedMapping(gateway as PCPGateway, maxWaitMs)).to.eq(true)
   }).timeout(3 * 60 * 1000)
+
+  it('should remap a port', async () => {
+    if (process.env.CI != null) {
+      return // CI environments don't have PCP routers!
+    }
+
+    if (process.env.GATEWAY === undefined) {
+      throw new Error('GATEWAY env not set')
+    }
+
+    const port = randomPort()
+    const mapped = []
+
+    try {
+      gateway = await pcpNat(process.env.GATEWAY).getGateway()
+    } catch (err: any) {
+      assert.fail(`Gateway initialization failed: ${err.message}`)
+    }
+
+    for await (const mapping of gateway.mapAll(port, {})) {
+      // console.log('mapping', mapping)
+      expect(mapping.externalHost).to.be.a('string')
+      expect(mapping.externalPort).to.be.a('number')
+
+      expect(mapping.internalHost).to.be.a('string')
+      expect(mapping.internalPort).to.be.a('number')
+
+      mapped.push(mapping)
+    }
+
+    // Ensure that we got at least one successful mapping
+    expect(mapped).to.have.lengthOf.at.least(1)
+
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve()
+      }, 5000)
+    })
+
+    await (gateway as PCPGateway).remap()
+  })
 })
