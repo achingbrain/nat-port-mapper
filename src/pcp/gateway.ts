@@ -93,7 +93,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.port = SERVER_PORT
     this.family = isIPv4(gatewayIP) ? 'IPv4' : 'IPv6'
     this.id = this.host
-    // this.refreshIntervals = new Map()
     this.mappings = new Mappings()
     this.options = options
 
@@ -456,7 +455,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     // skip byte 12 - 23 - reserved
 
-    // Success
     switch (req.op) {
       case OP_ANNOUNCE: {
         // OP_ANNOUNCE has no additional data to decode
