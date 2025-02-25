@@ -35,6 +35,7 @@ const EMPTY_IPV6 = '0000:0000:0000:0000:0000:0000:0000:0000'
 
 const MINIMUM_LIFETIME = 120 // seconds
 const DEFAULT_PCP_PORT_MAPPING_TTL = 60 * 60 // 1 hour
+const REFRESH_INTERVAL = 15_000 // run refresher every 15 seconds
 
 // EPOCH_DRIFT in seconds to account for clock drift
 const EPOCH_DRIFT = 10
@@ -76,7 +77,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
   public readonly port: number
   public readonly family: 'IPv4' | 'IPv6'
   private readonly options: GlobalMapPortOptions
-  private readonly refreshIntervals: Map<number, ReturnType<typeof setTimeout>>
+  private readonly autoRefresher: ReturnType<typeof setInterval> | undefined
   private readonly mappings: Mappings
   private gatewayEpoch: number | undefined // Unix timestamp in seconds of when the PCP server was started
 
@@ -92,7 +93,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.port = SERVER_PORT
     this.family = isIPv4(gatewayIP) ? 'IPv4' : 'IPv6'
     this.id = this.host
-    this.refreshIntervals = new Map()
+    // this.refreshIntervals = new Map()
     this.mappings = new Mappings()
     this.options = options
 
@@ -105,16 +106,12 @@ export class PCPGateway extends EventEmitter implements Gateway {
       }
     }
 
-    // TODO handle failed refresh
+    this.autoRefresher = this.refresher()
 
     // clientSocket sends ANNOUNCE and MAP messages and handles responses
     this.clientSocket = this.newClientSocket()
 
     this.connect()
-  }
-
-  public async isPCPSupported (): Promise<void> {
-    await this.announce()
   }
 
   private newClientSocket (): Socket {
@@ -133,6 +130,13 @@ export class PCPGateway extends EventEmitter implements Gateway {
     socket.on('error', (err) => { this.onError(err) })
 
     return socket
+  }
+
+  private connect (): void {
+    log('Client#connect()')
+    if (this.connecting) return
+    this.connecting = true
+    this.clientSocket.bind(0) // use a random port https://www.rfc-editor.org/rfc/rfc6887#section-8.1
   }
 
   private onListening (): void {
@@ -256,7 +260,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     parsed.resultMessage = RESULT_CODES[parsed.resultCode]
     if (parsed.resultCode !== RESULT_SUCCESS) {
-      // TODO - if resultCode is UNSUPP_VERSION and PCP_VERSION is 0, client MAY fallback to NAT-PMP
+      // @TODO - if resultCode is UNSUPP_VERSION and PCP_VERSION is 0, client MAY fallback to NAT-PMP
       // https://www.rfc-editor.org/rfc/rfc6887#section-9
       cb(errCode(new Error(parsed.resultMessage), parsed.resultCode))
       return
@@ -298,11 +302,8 @@ export class PCPGateway extends EventEmitter implements Gateway {
     cb(undefined, parsed)
   }
 
-  private connect (): void {
-    log('Client#connect()')
-    if (this.connecting) return
-    this.connecting = true
-    this.clientSocket.bind(0) // use a random port https://www.rfc-editor.org/rfc/rfc6887#section-8.1
+  public async isPCPSupported (): Promise<void> {
+    await this.announce()
   }
 
   public async * mapAll (internalPort: number, options: PCPMapPortOptions): AsyncGenerator<PortMapping, void, unknown> {
@@ -396,30 +397,30 @@ export class PCPGateway extends EventEmitter implements Gateway {
       throw e
     }
 
-    if (options.autoRefresh) {
-      const refresh = ((internalPort: number, opts: PCPMapPortOptions): void => {
-        log(`refreshing port mapping for ip: ${internalHost} port: ${internalPort} protocol: ${options.protocol}`)
-        const mn = this.mappings.get(internalHost, internalPort, options.protocol)
-        if (mn === undefined) {
-          throw new Error('Could not find mapping to renew')
-        }
-
-        opts.suggestedExternalAddress = mn.externalHost
-        opts.suggestedExternalPort = mn.externalPort
-        this.map(internalPort, internalHost, {
-          ...opts,
-          signal: AbortSignal.timeout(options.refreshTimeout)
-        })
-          .catch(err => {
-            log.error('could not refresh port mapping - %e', err)
-          })
-      }).bind(this, internalPort, {
-        ...options,
-        signal: undefined
-      })
-
-      this.refreshIntervals.set(internalPort, setTimeout(refresh, (result.lifetime / 2) * 1000))
-    }
+    // if (options.autoRefresh) {
+    //   const refresh = ((internalPort: number, opts: PCPMapPortOptions): void => {
+    //     log(`refreshing port mapping for ip: ${internalHost} port: ${internalPort} protocol: ${options.protocol}`)
+    //     const mn = this.mappings.get(internalHost, internalPort, options.protocol)
+    //     if (mn === undefined) {
+    //       throw new Error('Could not find mapping to renew')
+    //     }
+    //
+    //     opts.suggestedExternalAddress = mn.externalHost
+    //     opts.suggestedExternalPort = mn.externalPort
+    //     this.map(internalPort, internalHost, {
+    //       ...opts,
+    //       signal: AbortSignal.timeout(options.refreshTimeout)
+    //     })
+    //       .catch(err => {
+    //         log.error('could not refresh port mapping - %e', err)
+    //       })
+    //   }).bind(this, internalPort, {
+    //     ...options,
+    //     signal: undefined
+    //   })
+    //
+    //   this.refreshIntervals.set(internalPort, setTimeout(refresh, (result.lifetime / 2) * 1000))
+    // }
 
     return {
       externalHost: isPrivateIp(internalHost) === true ? await this.externalIp(opts) : internalHost,
@@ -440,10 +441,13 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
     await this.map(localPort, opts.internalAddress, {
       ...opts,
+      autoRefresh: false,
       ttl: 0
     })
   }
 
+  // remap attempts to remap all mappings - runs when a PCP servers epoch
+  // changes, e.g. after the PCP server reboots or its public IP changes
   public async remap (): Promise<void> {
     log('Client#remap()')
 
@@ -454,7 +458,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
           suggestedExternalAddress: m.externalHost,
           suggestedExternalPort: m.externalPort,
           protocol: m.protocol,
-          autoRefresh: true
+          autoRefresh: m.autoRefresh
         }
 
         return this.map(m.internalPort, m.internalHost, opts)
@@ -501,20 +505,16 @@ export class PCPGateway extends EventEmitter implements Gateway {
   public async stop (options?: AbortOptions): Promise<void> {
     log('Client#close()')
 
-    // Cancel all refresh timeouts
-    for (const timeout of this.refreshIntervals.values()) {
-      clearTimeout(timeout)
+    if (this.autoRefresher !== undefined) {
+      clearInterval(this.autoRefresher)
     }
-    this.refreshIntervals.clear()
 
-    // clear pending requests
     this.queue = []
 
     try {
       await Promise.allSettled(this.mappings.getAll().map(async (m) => {
         const opts: PCPMapPortOptions = {
           internalAddress: m.internalHost,
-          autoRefresh: false,
           ...options
         }
         return this.unmap(m.internalPort, opts)
@@ -533,28 +533,6 @@ export class PCPGateway extends EventEmitter implements Gateway {
     if (this.clientSocket != null) {
       this.clientSocket.close()
     }
-  }
-
-  // epoch is the number of seconds since the PCP server has started
-  private hasEpochChanged (epoch: number): boolean {
-    if (this.gatewayEpoch === undefined) {
-      return false
-    }
-
-    const newEpoch = Math.floor(Date.now() / 1000) - epoch
-
-    // older PCP server epoch, so invalid.
-    if (newEpoch < this.gatewayEpoch) {
-      return true
-    }
-
-    const delta = Math.abs(newEpoch - this.gatewayEpoch)
-
-    if (delta > EPOCH_DRIFT) {
-      return true
-    }
-
-    return false
   }
 
   private newPCPRequestHeader (clientIP: string, ttl: number, opcode: number): Buffer {
@@ -628,7 +606,7 @@ export class PCPGateway extends EventEmitter implements Gateway {
     pos = 24
 
     // Mapping nonce
-    const mappingNonce = this.mappings.getOrCreate(obj.internalAddress, localPort, obj.protocol)
+    const mappingNonce = this.mappings.getOrCreate(obj.internalAddress, localPort, obj.protocol, obj.autoRefresh)
     mappingNonce.nonce.copy(buf, pos, 0, 12)
     pos += 12
 
@@ -680,6 +658,63 @@ export class PCPGateway extends EventEmitter implements Gateway {
 
   private pcpRequestANNOUNCEPacket (obj: PCPMapPortOptions): Buffer {
     return this.newPCPRequestHeader(obj.internalAddress, 0, OP_ANNOUNCE)
+  }
+
+  private processPCPMapResponse (msg: Buffer, parsed: any, cb: Callback, localPort?: number, obj?: PCPMapPortOptions): void {
+    // PCP MAP response layout (36 bytes) + (24 byte header)
+    // https://www.rfc-editor.org/rfc/rfc6887#section-11.1
+    // Byte [0..11]:   Mapping Nonce (12 byte)
+    // Byte [12]:      Protocol (1 byte)
+    // Byte [13..15]:  Reserved (3 bytes)
+    // Byte [16..17]:  Internal port (2 bytes)
+    // Bytes [18..19]: External port (2 bytes)
+    // Bytes [20..35]: Assigned External IP Address (16 bytes)
+
+    if (msg.length < 60) {
+      cb(new Error('PCP MAP response too short'))
+      return
+    }
+
+    parsed.nonce = Buffer.alloc(12, 0)
+    msg.copy(parsed.nonce, 0, 24, 36)
+    if (this.mappings.getByNonce(parsed.nonce) === undefined) {
+      cb(new Error('Nonce not found in mappings'))
+      return
+    }
+
+    const protocol = msg.readUint8(36)
+    if (protocol === PROTO_TCP) {
+      parsed.protocol = 'TCP'
+    } else if (protocol === PROTO_UDP) {
+      parsed.protocol = 'UDP'
+    } else {
+      cb(new Error(`Unsupported protocol: ${parsed.protocol}`))
+      return
+    }
+
+    if (obj?.protocol?.toUpperCase() !== parsed.protocol.toUpperCase()) {
+      cb(new Error(`Unexpected protocol - expected: ${obj?.protocol?.toUpperCase()}, received: ${parsed.protocol.toUpperCase()}`))
+      return
+    }
+
+    parsed.internalPort = msg.readUInt16BE(40)
+    if (localPort !== parsed.internalPort) {
+      cb(new Error(`Unexpected internal port - expected: ${localPort}, received: ${parsed.internalPort}`))
+      return
+    }
+
+    parsed.externalPort = msg.readUInt16BE(42)
+
+    parsed.externalAddress = Buffer.alloc(16, 0)
+    msg.copy(parsed.externalAddress, 0, 44, 60)
+
+    const updated = this.mappings.update(parsed.internalPort, parsed.protocol, parsed.nonce, parsed.externalAddress, parsed.externalPort, (Math.floor(Date.now() / 1000) + parsed.lifetime) * 1000, parsed.lifetime)
+    if (!updated) {
+      cb(new Error(`Could not find mapping for ${parsed.internalPort}, ${parsed.type}, ${parsed.nonce.toString('hex')}`))
+      return
+    }
+
+    log('parsed', parsed)
   }
 
   /**
@@ -752,70 +787,69 @@ export class PCPGateway extends EventEmitter implements Gateway {
     this.clientSocket.send(buf, 0, buf.length, SERVER_PORT, this.host)
   }
 
-  private processPCPMapResponse (msg: Buffer, parsed: any, cb: Callback, localPort?: number, obj?: PCPMapPortOptions): void {
-    // PCP MAP response layout (36 bytes) + (24 byte header)
-    // https://www.rfc-editor.org/rfc/rfc6887#section-11.1
-    // Byte [0..11]:   Mapping Nonce (12 byte)
-    // Byte [12]:      Protocol (1 byte)
-    // Byte [13..15]:  Reserved (3 bytes)
-    // Byte [16..17]:  Internal port (2 bytes)
-    // Bytes [18..19]: External port (2 bytes)
-    // Bytes [20..35]: Assigned External IP Address (16 bytes)
-
-    if (msg.length < 60) {
-      cb(new Error('PCP MAP response too short'))
-      return
-    }
-
-    parsed.nonce = Buffer.alloc(12, 0)
-    msg.copy(parsed.nonce, 0, 24, 36)
-    if (this.mappings.getByNonce(parsed.nonce) === undefined) {
-      cb(new Error('Nonce not found in mappings'))
-      return
-    }
-
-    const protocol = msg.readUint8(36)
-    if (protocol === PROTO_TCP) {
-      parsed.protocol = 'TCP'
-    } else if (protocol === PROTO_UDP) {
-      parsed.protocol = 'UDP'
-    } else {
-      cb(new Error(`Unsupported protocol: ${parsed.protocol}`))
-      return
-    }
-
-    if (obj?.protocol?.toUpperCase() !== parsed.protocol.toUpperCase()) {
-      cb(new Error(`Unexpected protocol - expected: ${obj?.protocol?.toUpperCase()}, received: ${parsed.protocol.toUpperCase()}`))
-      return
-    }
-
-    parsed.internalPort = msg.readUInt16BE(40)
-    if (localPort !== parsed.internalPort) {
-      cb(new Error(`Unexpected internal port - expected: ${localPort}, received: ${parsed.internalPort}`))
-      return
-    }
-
-    parsed.externalPort = msg.readUInt16BE(42)
-
-    parsed.externalAddress = Buffer.alloc(16, 0)
-    msg.copy(parsed.externalAddress, 0, 44, 60)
-
-    const updated = this.mappings.update(parsed.internalPort, parsed.protocol, parsed.nonce, parsed.externalAddress, parsed.externalPort, (Math.floor(Date.now() / 1000) + parsed.lifetime) * 1000)
-    if (!updated) {
-      cb(new Error(`Could not find mapping for ${parsed.internalPort}, ${parsed.type}, ${parsed.nonce.toString('hex')}`))
-      return
-    }
-
-    log('parsed', parsed)
-  }
-
   public getMappings (): Mapping[] {
     return this.mappings.getAll()
+  }
+
+  // refresher runs every REFRESH_INTERVAL seconds to renew mappings that are
+  // expiring. We slightly deviate from the SHOULD spec here and just run a
+  // single refresh function for all expiring mapping. It simplifies clean up
+  // and retry logic. It still conforms to the four seconds constraint and
+  // doesn't flood the server.
+  // We class a mapping as expiring when it has less than half of total lifetime
+  // remaining. https://www.rfc-editor.org/rfc/rfc6887#section-11.2.1
+  private refresher (): NodeJS.Timeout {
+    return setInterval(() => {
+      log('Client#autoRefresher')
+      void this.refreshMappings()
+    }, REFRESH_INTERVAL)
+  }
+
+  private async refreshMappings (): Promise<void> {
+    try {
+      await Promise.allSettled(
+        this.mappings.getExpiring().map(async (m) => {
+          const opts: PCPMapPortOptions = {
+            internalAddress: m.internalHost,
+            suggestedExternalAddress: m.externalHost,
+            suggestedExternalPort: m.externalPort,
+            protocol: m.protocol,
+            autoRefresh: m.autoRefresh
+          }
+          return this.map(m.internalPort, m.internalHost, opts)
+        })
+      )
+    } catch (e) {
+      log('Could not remap', e)
+    }
   }
 
   private getEphemeralPort (): number {
     const min = 49152
     const max = 65535
     return Math.floor(Math.random() * (max - min + 1)) + min
+  }
+
+  // hasEpochChanged calculates if the server epoch has changed, taking into
+  // account a small clock drift. Indicates if the PCP server has restarted.
+  private hasEpochChanged (epoch: number): boolean {
+    if (this.gatewayEpoch === undefined) {
+      return false
+    }
+
+    const newEpoch = Math.floor(Date.now() / 1000) - epoch
+
+    // older PCP server epoch, so invalid.
+    if (newEpoch < this.gatewayEpoch) {
+      return true
+    }
+
+    const delta = Math.abs(newEpoch - this.gatewayEpoch)
+
+    if (delta > EPOCH_DRIFT) {
+      return true
+    }
+
+    return false
   }
 }

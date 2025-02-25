@@ -3,8 +3,6 @@ import { pcpNat } from '../src/index.js'
 import { randomPort } from './fixtures/random-port.js'
 import type { Gateway } from '../src/index.js'
 import type { PCPGateway } from '../src/pcp/gateway.js'
-// import type { PCPNATClient } from '../src/pcp/index.js'
-// import type { PCPNATClient } from '../src/pcp/index.js'
 
 // Helper to wait until at least one mapping has expiresAt > 2 minutes from now
 async function waitForRefreshedMapping (
@@ -51,7 +49,8 @@ describe('pcp-nat-port-mapper', () => {
   afterEach(async () => {
     try {
       await gateway?.stop()
-    } catch {
+    } catch (err: any) {
+      console.log(err)
     }
   })
 
@@ -130,7 +129,8 @@ describe('pcp-nat-port-mapper', () => {
     }
 
     try {
-      gateway = await pcpNat('127.0.0.2').getGateway()
+      const client = pcpNat('127.0.0.2')
+      gateway = await client.getGateway()
     } catch (err: any) {
       expect(err.message).to.contain('No PCP server found')
       return

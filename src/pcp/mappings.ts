@@ -8,7 +8,9 @@ export interface Mapping {
   externalHost?: string
   externalPort?: number
   nonce: Buffer
+  autoRefresh?: boolean
   expiresAt?: number
+  lifetime?: number // number of seconds this mapping will be active on the PCP server
 }
 
 export class Mappings {
@@ -18,12 +20,13 @@ export class Mappings {
     this.mappings = []
   }
 
-  private new (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
+  private new (internalHost: string, internalPort: number, protocol: Protocol, autoRefresh?: boolean): Mapping {
     const m: Mapping = {
       protocol,
       internalHost,
       internalPort,
-      nonce: randomBytes(12)
+      nonce: randomBytes(12),
+      autoRefresh
     }
 
     return m
@@ -57,18 +60,33 @@ export class Mappings {
     return undefined
   }
 
-  public getOrCreate (internalHost: string, internalPort: number, protocol: Protocol): Mapping {
+  public getOrCreate (internalHost: string, internalPort: number, protocol: Protocol, autoRefresh?: boolean): Mapping {
     let m = this.get(internalHost, internalPort, protocol)
 
     if (m === undefined) {
-      m = this.new(internalHost, internalPort, protocol)
+      m = this.new(internalHost, internalPort, protocol, autoRefresh)
       this.mappings.push(m)
     }
 
     return m
   }
 
-  public update (internalPort: number, protocol: Protocol, nonce: Buffer, externalHost: string, externalPort: number, expiresAt: number): boolean {
+  public getExpiring (): Mapping[] {
+    const now = Date.now()
+
+    return this.mappings.filter(mapping => {
+      if (mapping.autoRefresh === undefined || !mapping.autoRefresh) return false
+      if (mapping.expiresAt === undefined || mapping.lifetime === undefined) return false
+
+      // If less than 1/2 the lifetime is remaining, class as expiring
+      // https://www.rfc-editor.org/rfc/rfc6887#section-11.2.1
+      const remainingTime = (mapping.expiresAt - now) / 1000
+
+      return remainingTime < (mapping.lifetime / 2)
+    })
+  }
+
+  public update (internalPort: number, protocol: Protocol, nonce: Buffer, externalHost: string, externalPort: number, expiresAt: number, lifetime: number): boolean {
     let updated = false
 
     for (let i = 0; i < this.mappings.length; i++) {
@@ -79,6 +97,7 @@ export class Mappings {
         this.mappings[i].externalHost = externalHost
         this.mappings[i].externalPort = externalPort
         this.mappings[i].expiresAt = expiresAt
+        this.mappings[i].lifetime = lifetime
         updated = true
       }
     }

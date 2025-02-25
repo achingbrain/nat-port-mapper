@@ -17,7 +17,12 @@ export class PCPNATClient extends EventEmitter {
   async getGateway (options?: AbortOptions): Promise<Gateway> {
     const gateway = new PCPGateway(this.gatewayIP, this.options)
 
-    await gateway.isPCPSupported()
+    try {
+      await gateway.isPCPSupported()
+    } catch (err: any) {
+      await gateway?.stop()
+      throw err
+    }
 
     return gateway
   }
