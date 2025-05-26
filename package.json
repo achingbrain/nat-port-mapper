@@ -160,7 +160,7 @@
     "@types/default-gateway": "^7.2.0",
     "@types/netmask": "^2.0.5",
     "@types/xml2js": "^0.4.11",
-    "aegir": "^45.0.1",
+    "aegir": "^47.0.16",
     "default-gateway": "^7.2.2"
   }
 }
