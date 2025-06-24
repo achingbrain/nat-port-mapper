@@ -4,7 +4,7 @@ import { isIPv6 } from '@chainsafe/is-ip'
 import { logger, enabled } from '@libp2p/logger'
 import { DEVICE_INTERNET_GATEWAY_SERVICE_2 } from './constants.js'
 import type { InternetGatewayDevice } from './device.js'
-import type { DiscoverOptions, Service, SSDP } from '@achingbrain/ssdp'
+import type { DiscoverOptions, Service, SSDP, SSDPSocketOptions } from '@achingbrain/ssdp'
 
 const log = logger('nat-port-mapper:discovery')
 
@@ -25,35 +25,46 @@ function weAreSender (sender: string): boolean {
   return addresses.includes(sender)
 }
 
+function getSockets (): SSDPSocketOptions[] {
+  const sockets: SSDPSocketOptions[] = []
+
+  for (const interfaces of Object.values(networkInterfaces())) {
+    if (interfaces == null) {
+      continue
+    }
+
+    interfaces.forEach(iface => {
+      if (iface.internal) {
+        // skip loopback addresses
+        return
+      }
+
+      if (iface.address.startsWith('169.254.') || iface.address.startsWith('fe80')) {
+        // skip link local-local addresses
+        // https://en.wikipedia.org/wiki/Link-local_address
+        return
+      }
+
+      sockets.push({
+        type: iface.family === 'IPv4' ? 'udp4' : 'udp6',
+        bind: {
+          address: iface.address,
+          port: 1900
+        }
+      })
+    })
+  }
+
+  return sockets
+}
+
 export async function * discoverGateways (options?: DiscoverOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
   let discovery: SSDP | undefined
 
   try {
     discovery = await ssdp({
       cache: false,
-      sockets: [{
-        type: 'udp4',
-        broadcast: {
-          address: '239.255.255.250',
-          port: 1900
-        },
-        bind: {
-          address: '0.0.0.0',
-          port: 1900
-        },
-        maxHops: 4
-      }, {
-        type: 'udp6',
-        broadcast: {
-          address: 'FF05::C',
-          port: 1900
-        },
-        bind: {
-          address: '0:0:0:0:0:0:0:0',
-          port: 1900
-        },
-        maxHops: 4
-      }]
+      sockets: getSockets()
     })
     discovery.on('transport:outgoing-message', (socket, message, remote) => {
       log.trace('-> Outgoing to %s:%s via %s', isIPv6(remote.address) ? `[${remote.address}]` : remote.address, remote.port, socket.type)
