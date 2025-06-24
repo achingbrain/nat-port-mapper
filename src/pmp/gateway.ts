@@ -3,7 +3,7 @@ import { EventEmitter } from 'events'
 import { isIPv4 } from '@chainsafe/is-ip'
 import { logger } from '@libp2p/logger'
 import errCode from 'err-code'
-import defer, { type DeferredPromise } from 'p-defer'
+import defer from 'p-defer'
 import { raceSignal } from 'race-signal'
 import { DEFAULT_PORT_MAPPING_TTL, DEFAULT_REFRESH_THRESHOLD, DEFAULT_REFRESH_TIMEOUT } from '../upnp/constants.js'
 import { findLocalAddresses } from '../upnp/utils.js'
@@ -11,6 +11,7 @@ import { isPrivateIp } from '../utils.js'
 import type { Gateway, MapPortOptions, GlobalMapPortOptions, PortMapping } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 import type { Socket, RemoteInfo } from 'dgram'
+import type { DeferredPromise } from 'p-defer'
 
 const log = logger('nat-port-mapper:pmp')
 
@@ -85,7 +86,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
 
   connect (): void {
     log('Client#connect()')
-    if (this.connecting) return
+    if (this.connecting) { return }
     this.connecting = true
     this.socket.bind(CLIENT_PORT)
   }
@@ -367,7 +368,7 @@ export class PMPGateway extends EventEmitter implements Gateway {
     this.queue.shift()
 
     if (parsed.vers !== 0) {
-      cb(new Error(`"vers" must be 0. Got: ${parsed.vers}`)) // eslint-disable-line @typescript-eslint/restrict-template-expressions
+      cb(new Error(`"vers" must be 0. Got: ${parsed.vers}`))
       return
     }
 
