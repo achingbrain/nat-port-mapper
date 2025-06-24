@@ -1,3 +1,9 @@
+## [4.0.4](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.3...v4.0.4) (2025-06-24)
+
+### Bug Fixes
+
+* use socket for every interface for discovery ([#97](https://github.com/achingbrain/nat-port-mapper/issues/97)) ([08a1555](https://github.com/achingbrain/nat-port-mapper/commit/08a1555bf0ff2a809a9e494a04e171ed4df240c3))
+
 ## [4.0.3](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.2...v4.0.3) (2025-06-24)
 
 ### Dependencies
