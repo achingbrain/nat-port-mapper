@@ -21,8 +21,8 @@ export function getNamespace (data: any, uri: string): string {
 
   if (data['@'] != null) {
     Object.keys(data['@']).some(function (key) {
-      if (!/^xmlns:/.test(key)) return false
-      if (data['@'][key] !== uri) return false
+      if (!/^xmlns:/.test(key)) { return false }
+      if (data['@'][key] !== uri) { return false }
 
       ns = key.replace(/^xmlns:/, '')
       return true
