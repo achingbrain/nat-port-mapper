@@ -39,7 +39,7 @@ function getSockets (): SSDPSocketOptions[] {
         return
       }
 
-      if (iface.address.startsWith('fe80')) {
+      if (iface.address.startsWith('169.254.') || iface.address.startsWith('fe80')) {
         // skip link local-local addresses
         // https://en.wikipedia.org/wiki/Link-local_address
         return
