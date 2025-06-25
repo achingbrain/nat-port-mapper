@@ -3,7 +3,7 @@
 [![codecov](https://img.shields.io/codecov/c/github/achingbrain/nat-port-mapper.svg?style=flat-square)](https://codecov.io/gh/achingbrain/nat-port-mapper)
 [![CI](https://img.shields.io/github/actions/workflow/status/achingbrain/nat-port-mapper/js-test-and-release.yml?branch=main\&style=flat-square)](https://github.com/achingbrain/nat-port-mapper/actions/workflows/js-test-and-release.yml?query=branch%3Amain)
 
-> Port mapping with UPnP and NAT-PMP
+> Port mapping with UPnP, NAT-PMP and PCP
 
 # About
 
