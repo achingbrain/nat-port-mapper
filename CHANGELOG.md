@@ -1,3 +1,10 @@
+## [4.0.5](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.4...v4.0.5) (2025-10-14)
+
+### Dependencies
+
+* bump @libp2p/logger from 5.2.0 to 6.0.5 ([#103](https://github.com/achingbrain/nat-port-mapper/issues/103)) ([83f74a2](https://github.com/achingbrain/nat-port-mapper/commit/83f74a27658a8150dc77952cdcddafee32ffb6b2))
+* bump race-signal from 1.1.3 to 2.0.0 ([#98](https://github.com/achingbrain/nat-port-mapper/issues/98)) ([3640cb4](https://github.com/achingbrain/nat-port-mapper/commit/3640cb4fc9f3459f41e48de6c3c53ebb2f200ebf))
+
 ## [4.0.4](https://github.com/achingbrain/nat-port-mapper/compare/v4.0.3...v4.0.4) (2025-06-24)
 
 ### Bug Fixes
