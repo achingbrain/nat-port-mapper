@@ -154,7 +154,7 @@
     "err-code": "^3.0.1",
     "netmask": "^2.0.2",
     "p-defer": "^4.0.0",
-    "race-signal": "^1.1.0",
+    "race-signal": "^2.0.0",
     "xml2js": "^0.6.0"
   },
   "devDependencies": {
