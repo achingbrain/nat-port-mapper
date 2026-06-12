@@ -1,6 +1,6 @@
 import { isIPv4, isIPv6 } from '@chainsafe/is-ip'
 import { logger } from '@libp2p/logger'
-import { DEVICE_INTERNET_GATEWAY_SERVICE_2, ONE_HOUR } from './constants.js'
+import { DEVICE_INTERNET_GATEWAY_SERVICE_1, DEVICE_INTERNET_GATEWAY_SERVICE_2, ONE_HOUR } from './constants.js'
 import { Device } from './device.js'
 import { discoverGateways } from './discovery.js'
 import { fetchXML } from './fetch.js'
@@ -11,6 +11,10 @@ import type { FindGatewaysOptions, Gateway, UPnPNATOptions } from '../index.js'
 import type { AbortOptions } from 'abort-error'
 
 const log = logger('nat-port-mapper:upnp')
+const INTERNET_GATEWAY_SERVICE_TYPES = [
+  DEVICE_INTERNET_GATEWAY_SERVICE_1,
+  DEVICE_INTERNET_GATEWAY_SERVICE_2
+]
 
 export class UPnPClient {
   private readonly options: UPnPNATOptions
@@ -30,7 +34,7 @@ export class UPnPClient {
         yield new InternetGatewayService4(device, this.options)
       }
 
-      if (isIPv6(host)) {
+      if (isIPv6(host) && service.details.device.deviceType === DEVICE_INTERNET_GATEWAY_SERVICE_2) {
         yield new InternetGatewayService6(device, this.options)
       }
     }
@@ -49,14 +53,16 @@ export class UPnPClient {
 
     const device = new Device(service)
 
-    if (service.details.device.deviceType === DEVICE_INTERNET_GATEWAY_SERVICE_2) {
+    if (INTERNET_GATEWAY_SERVICE_TYPES.includes(service.details.device.deviceType)) {
       if (isIPv4(location.hostname)) {
         return new InternetGatewayService4(device, this.options)
       }
 
-      return new InternetGatewayService6(device, this.options)
+      if (service.details.device.deviceType === DEVICE_INTERNET_GATEWAY_SERVICE_2) {
+        return new InternetGatewayService6(device, this.options)
+      }
     }
 
-    throw new Error(`Device type was not "${DEVICE_INTERNET_GATEWAY_SERVICE_2}", it was "${service.details.device.deviceType}"`)
+    throw new Error(`Device type was not one of "${INTERNET_GATEWAY_SERVICE_TYPES.join('", "')}", it was "${service.details.device.deviceType}"`)
   }
 }

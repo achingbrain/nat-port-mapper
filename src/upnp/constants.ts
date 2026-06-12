@@ -22,6 +22,11 @@ export const DEVICE_WAN_IP_CONNECTION_1 = 'urn:schemas-upnp-org:service:WANIPCon
 export const DEVICE_WAN_IP_CONNECTION_2 = 'urn:schemas-upnp-org:service:WANIPConnection:2'
 
 /**
+ * @see https://upnp.org/specs/gw/UPnP-gw-WANPPPConnection-v1-Service.pdf
+ */
+export const DEVICE_WAN_PPP_CONNECTION_1 = 'urn:schemas-upnp-org:service:WANPPPConnection:1'
+
+/**
  * @see https://upnp.org/specs/gw/UPnP-gw-InternetGatewayDevice-v1-Device.pdf
  */
 export const DEVICE_INTERNET_GATEWAY_SERVICE_1 = 'urn:schemas-upnp-org:device:InternetGatewayDevice:1'

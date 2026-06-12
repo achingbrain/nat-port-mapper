@@ -106,6 +106,12 @@ Based on [alxhotel/nat-api](https://github.com/alxhotel/nat-api)
 $ npm i @achingbrain/nat-port-mapper
 ```
 
+# Run the example
+
+```console
+$ npm run example:map-port -- 3000
+```
+
 # API Docs
 
 - <https://achingbrain.github.io/nat-port-mapper>

@@ -27,7 +27,9 @@ export class InternetGatewayService4 extends InternetGatewayService<IPv4Mapping>
     this.log('creating mapping for local port %d to %j', localPort, mapping)
 
     const gateway = await this.getGateway(options)
-    const response = await gateway.run(DEVICE_WAN_IP_CONNECTION_2, 'AddAnyPortMapping', [
+    const service = this.getWANIPConnectionService(gateway)
+    const action = service === DEVICE_WAN_IP_CONNECTION_2 ? 'AddAnyPortMapping' : 'AddPortMapping'
+    const response = await gateway.run(service, action, [
       ['NewRemoteHost', mapping.remoteHost],
       ['NewExternalPort', mapping.externalPort],
       ['NewProtocol', mapping.protocol],
@@ -38,9 +40,20 @@ export class InternetGatewayService4 extends InternetGatewayService<IPv4Mapping>
       ['NewLeaseDuration', mapping.ttl]
     ], options)
 
+    if (service !== DEVICE_WAN_IP_CONNECTION_2) {
+      if (options.autoRefresh ?? this.options.autoRefresh ?? DEFAULT_AUTO_REFRESH) {
+        this.configureRefresh(localPort, mapping, options)
+      }
+
+      this.addMapping(localPort, mapping)
+
+      return Number(mapping.externalPort)
+    }
+
     // UPnP2 will resolve port mapping conflicts for us so we need to read the
     // mapped port from the response
     const key = findNamespacedKey('AddAnyPortMappingResponse', response)
+    mapping.externalPort = response[key].NewReservedPort
 
     if (options.autoRefresh ?? this.options.autoRefresh ?? DEFAULT_AUTO_REFRESH) {
       this.configureRefresh(localPort, mapping, options)
@@ -57,7 +70,10 @@ export class InternetGatewayService4 extends InternetGatewayService<IPv4Mapping>
     for (const mapping of mappings) {
       try {
         const gateway = await this.getGateway(options)
-        await gateway.run(DEVICE_WAN_IP_CONNECTION_2, 'AddAnyPortMapping', [
+        const service = this.getWANIPConnectionService(gateway)
+        const action = service === DEVICE_WAN_IP_CONNECTION_2 ? 'AddAnyPortMapping' : 'AddPortMapping'
+
+        await gateway.run(service, action, [
           ['NewRemoteHost', mapping.remoteHost],
           ['NewExternalPort', mapping.externalPort],
           ['NewProtocol', mapping.protocol],
@@ -83,10 +99,10 @@ export class InternetGatewayService4 extends InternetGatewayService<IPv4Mapping>
         clearTimeout(mapping.refreshTimeout)
 
         const gateway = await this.getGateway(options)
-        await gateway.run(DEVICE_WAN_IP_CONNECTION_2, 'DeletePortMapping', [
-          ['NewRemoteHost', ''],
-          ['NewExternalPort', localPort],
-          ['NewProtocol', '']
+        await gateway.run(this.getWANIPConnectionService(gateway), 'DeletePortMapping', [
+          ['NewRemoteHost', mapping.remoteHost],
+          ['NewExternalPort', mapping.externalPort],
+          ['NewProtocol', mapping.protocol]
         ], options)
       } catch (err) {
         this.log.error('could not unmap port %d - %e', localPort, err)
