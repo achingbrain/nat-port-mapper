@@ -2,11 +2,15 @@ import { networkInterfaces } from 'node:os'
 import ssdp from '@achingbrain/ssdp'
 import { isIPv6 } from '@chainsafe/is-ip'
 import { logger, enabled } from '@libp2p/logger'
-import { DEVICE_INTERNET_GATEWAY_SERVICE_2 } from './constants.js'
+import { DEVICE_INTERNET_GATEWAY_SERVICE_1, DEVICE_INTERNET_GATEWAY_SERVICE_2 } from './constants.js'
 import type { InternetGatewayDevice } from './device.js'
 import type { DiscoverOptions, Service, SSDP, SSDPSocketOptions } from '@achingbrain/ssdp'
 
 const log = logger('nat-port-mapper:discovery')
+const INTERNET_GATEWAY_SERVICE_TYPES = [
+  DEVICE_INTERNET_GATEWAY_SERVICE_1,
+  DEVICE_INTERNET_GATEWAY_SERVICE_2
+]
 
 function weAreSender (sender: string): boolean {
   const addresses: string[] = []
@@ -60,6 +64,10 @@ function getSockets (): SSDPSocketOptions[] {
 
 export async function * discoverGateways (options?: DiscoverOptions): AsyncGenerator<Service<InternetGatewayDevice>, void, unknown> {
   let discovery: SSDP | undefined
+  let gateways: Array<{
+    iterator: AsyncIterator<Service<InternetGatewayDevice>, void, unknown>
+    next: Promise<IteratorResult<Service<InternetGatewayDevice>, void>>
+  }> = []
 
   try {
     discovery = await ssdp({
@@ -85,12 +93,36 @@ export async function * discoverGateways (options?: DiscoverOptions): AsyncGener
     log('searching for gateways')
 
     const services = new Set<string>()
+    const activeDiscovery = discovery
 
-    for await (const service of discovery.discover<InternetGatewayDevice>({
-      ...options,
-      serviceType: DEVICE_INTERNET_GATEWAY_SERVICE_2
-    })) {
-      if (service.serviceType !== DEVICE_INTERNET_GATEWAY_SERVICE_2) {
+    gateways = INTERNET_GATEWAY_SERVICE_TYPES.map(serviceType => {
+      const iterator = activeDiscovery.discover<InternetGatewayDevice>({
+        ...options,
+        serviceType
+      })[Symbol.asyncIterator]()
+
+      return {
+        iterator,
+        next: iterator.next()
+      }
+    })
+
+    while (gateways.length > 0) {
+      const { index, result } = await Promise.race(gateways.map(async (gateway, index) => ({
+        index,
+        result: await gateway.next
+      })))
+
+      if (result.done === true) {
+        gateways.splice(index, 1)
+        continue
+      }
+
+      gateways[index].next = gateways[index].iterator.next()
+
+      const service = result.value
+
+      if (!INTERNET_GATEWAY_SERVICE_TYPES.includes(service.serviceType)) {
         continue
       }
 
@@ -102,7 +134,7 @@ export async function * discoverGateways (options?: DiscoverOptions): AsyncGener
 
       services.add(location)
 
-      log('discovered UPnP2 gateway %s %s', service.location, service.uniqueServiceName)
+      log('discovered UPnP gateway %s %s', service.location, service.uniqueServiceName)
       yield service
     }
   } catch (err) {
@@ -110,6 +142,7 @@ export async function * discoverGateways (options?: DiscoverOptions): AsyncGener
       log.error('error during service discovery - %e', err)
     }
   } finally {
+    await Promise.all(gateways.map(async gateway => gateway.iterator.return?.()))
     await discovery?.stop()
   }
 }

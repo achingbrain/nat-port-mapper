@@ -1,7 +1,7 @@
 import { isIPv6, isIPv4 } from '@chainsafe/is-ip'
 import { logger } from '@libp2p/logger'
 import { isPrivateIp } from '../utils.js'
-import { DEFAULT_REFRESH_THRESHOLD, DEFAULT_REFRESH_TIMEOUT, DEVICE_WAN_IP_CONNECTION_2 } from './constants.js'
+import { DEFAULT_REFRESH_THRESHOLD, DEFAULT_REFRESH_TIMEOUT, DEVICE_INTERNET_GATEWAY_SERVICE_1, DEVICE_INTERNET_GATEWAY_SERVICE_2, DEVICE_WAN_IP_CONNECTION_1, DEVICE_WAN_IP_CONNECTION_2, DEVICE_WAN_PPP_CONNECTION_1 } from './constants.js'
 import { Device } from './device.js'
 import { discoverGateways } from './discovery.js'
 import { findLocalAddresses, findNamespacedKey, stripHostBrackets } from './utils.js'
@@ -34,7 +34,19 @@ export abstract class InternetGatewayService<Mapping extends RefreshableMapping>
     this.port = 0
     this.setGateway(gateway)
     this.family = isIPv6(this.host) ? 'IPv6' : 'IPv4'
-    this.log = logger(`nat-port-mapper:upnp:internetgatewaydevice2:${this.family.toLowerCase()}`)
+    this.log = logger(`nat-port-mapper:upnp:internetgatewaydevice${this.getInternetGatewayDeviceVersion(gateway)}:${this.family.toLowerCase()}`)
+  }
+
+  private getInternetGatewayDeviceVersion (gateway: Device): string {
+    if (gateway.service.details.device.deviceType === DEVICE_INTERNET_GATEWAY_SERVICE_1) {
+      return '1'
+    }
+
+    if (gateway.service.details.device.deviceType === DEVICE_INTERNET_GATEWAY_SERVICE_2) {
+      return '2'
+    }
+
+    return ''
   }
 
   protected async getGateway (options?: AbortOptions): Promise<Device> {
@@ -78,11 +90,29 @@ export abstract class InternetGatewayService<Mapping extends RefreshableMapping>
     this.log.trace('discover external IP address')
 
     const gateway = await this.getGateway(options)
-    const response = await gateway.run(DEVICE_WAN_IP_CONNECTION_2, 'GetExternalIPAddress', [], options)
+    const response = await gateway.run(this.getWANIPConnectionService(gateway), 'GetExternalIPAddress', [], options)
     const key = findNamespacedKey('GetExternalIPAddressResponse', response)
 
     this.log.trace('discovered external IP address %s', response[key].NewExternalIPAddress)
     return response[key].NewExternalIPAddress
+  }
+
+  protected getWANIPConnectionService (gateway: Device): string {
+    for (const serviceType of [
+      DEVICE_WAN_IP_CONNECTION_2,
+      DEVICE_WAN_IP_CONNECTION_1,
+      DEVICE_WAN_PPP_CONNECTION_1
+    ]) {
+      try {
+        gateway.getService(serviceType)
+
+        return serviceType
+      } catch (err) {
+        // try the next supported IPv4 WAN connection service
+      }
+    }
+
+    throw new Error('Service not found')
   }
 
   async * mapAll (localPort: number, options: MapPortOptions = {}): AsyncGenerator<PortMapping, void, unknown> {

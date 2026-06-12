@@ -30,6 +30,7 @@
   "type": "module",
   "types": "./dist/src/index.d.ts",
   "files": [
+    "examples",
     "src",
     "dist",
     "!dist/test",
@@ -142,6 +143,7 @@
     "doc-check": "aegir doc-check",
     "build": "aegir build --no-bundle",
     "docs": "aegir docs",
+    "example:map-port": "npm run build && node examples/map-port.js",
     "release": "aegir release",
     "test": "aegir test -t node",
     "test:node": "aegir test -t node"
